@@ -1,56 +1,71 @@
-# IoT Core Server Documentation
+# IoT Core Backend
 
-## Project Introduction
-The IoT Core Server is a robust platform designed for managing and processing data from IoT devices. It provides services to collect, analyze, and visualize data from connected devices.
+This repository serves as the central backend service for the IoT-core platform, handling authentication, user management, and IoT device control through a modular architecture built on the Laravel framework.
 
-## Cloud Role
-The IoT Core Server acts as a middleware between the IoT devices and the cloud. It ensures secure data transmission, performs real-time data processing, and integrates seamlessly with cloud storage and computing services.
+## Core Features
 
-## Architecture
-The architecture of the IoT Core Server consists of:
-- **IoT Devices:** Sensors and actuators that collect or interact with data.
-- **IoT Gateway:** Connects IoT devices to the IoT Core Server.
-- **IoT Core Server:** The main server that processes incoming data, manages device connections, and facilitates data exchanges.
-- **Cloud Services:** External services utilized for data storage, processing, and machine learning capabilities.
+The backend provides centralized authentication with Laravel Passport, including login, token refresh, logout, registration, and password changes for web and service clients while managing personal access and password grant clients. It delivers user and company account manage features with role-aware access, filtering, and updates, plus admin-only visibility into system logs and metrics such as weekly log counts for audit and monitoring workflows. The Control Module exposes versioned endpoints to manage gateways, nodes, and control URLs, including registration, deactivation, execution, and deletion actions, alongside a public endpoint for listing available active nodes. The Map Module provides versioned endpoints to manage areas and maps used by location features.
 
-```bash
-# Example of how to start the IoT Core Server
-cd /path/to/iot-core-server 
+---
 
-# Start the server
-./start-server.sh 
+## Technical Setup
 
-# Check the status
-./status.sh 
-```
+### 1. Prerequisites
+- PHP 8.2 or higher
+- Composer
+- Node.js 18 or higher (for asset compilation)
+- MySQL or a compatible relational database
 
-## Setup Tutorial
-### Prerequisites
-- Install [Node.js](https://nodejs.org/) version 14 or greater.
-- Install [Docker](https://www.docker.com/) for container management.
-- Ensure you have network access to IoT devices.
+### 2. Installation Steps
 
-### Installation Steps
-1. **Clone the Repository**
+1. **Install Dependencies**
    ```bash
-   git clone https://github.com/IoTCoreTeam/iot-core-server.git
-   cd iot-core-server
-   ```
-2. **Install Dependencies**
-   ```bash
+   composer install
    npm install
    ```
-3. **Build the Project**
-   ```bash
-   npm run build
-   ```
-4. **Run the Server**
-   ```bash
-   npm start
-   ```
-5. **Verify Installation**
-   Open your browser and navigate to `http://localhost:3000` to see the IoT Core Server dashboard.
-```
 
-## Conclusion
-This README provides a basic overview of the IoT Core Server. Follow the steps above for setup and refer to the documentation for advanced configurations.
+2. **Environment Configuration**
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+   *Configure your database connection details in the newly created `.env` file.*
+
+3. **Database Initialization**
+   ```bash
+   php artisan migrate --seed
+   ```
+
+4. **Passport Initialization**
+   ```bash
+   php artisan install:api --passport
+   php artisan passport:keys --force
+   ```
+   *This generates the RSA keys required for secure token signing in the `storage/` directory.*
+
+5. **Personal Access Client Setup**
+   ```bash
+   php artisan passport:client --personal
+   ```
+
+### 3. Running the Application
+
+- **Development Server:**
+  ```bash
+  php artisan serve
+  ```
+
+- **Full Stack Concurrency (Server, Queue, Vite):**
+  ```bash
+  composer dev
+  ```
+
+---
+
+## Utility Commands
+
+- `composer setup`: Orchestrates dependency installation, environment setup, migrations, and builds.
+- `php artisan test`: Executes the automated test suite.
+- `php artisan storage:link`: Establishes the symbolic link for public file storage.
+
+For detailed information on the setup process, refer to `docs/Setup_tutorial.txt` or contact the development team.
