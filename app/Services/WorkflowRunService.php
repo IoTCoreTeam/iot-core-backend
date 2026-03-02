@@ -10,6 +10,10 @@ use Modules\ControlModule\Services\ControlUrlService;
 class WorkflowRunService
 {
     private ControlUrlService $controlUrlService;
+    /**
+     * @var array<int, array<string, mixed>>
+     */
+    private array $events = [];
 
     public function __construct(ControlUrlService $controlUrlService)
     {
@@ -21,6 +25,11 @@ class WorkflowRunService
      */
     public function run(Workflow $workflow): array
     {
+        $this->events = [];
+        $this->recordEvent('workflow_start', [
+            'workflow_id' => $workflow->id,
+        ]);
+
         $definition = $workflow->control_definition ?? $workflow->definition ?? null;
         if (! is_array($definition) || empty($definition['nodes'])) {
             throw new \RuntimeException('Workflow definition is empty.');
@@ -30,20 +39,40 @@ class WorkflowRunService
         $edges = $definition['edges'] ?? [];
 
         $deviceStatus = $this->fetchDeviceStatus();
+        $this->recordEvent('device_status_fetched', [
+            'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
+        ]);
         $this->assertDevicesOnline($nodes, $deviceStatus);
-        $this->ensureAllDevicesOff();
+        $this->ensureWorkflowDevicesOff($nodes);
+        $this->recordEvent('workflow_devices_ensured_off');
 
         try {
             $result = $this->executeFlow($nodes, $edges);
+            $this->recordEvent('workflow_completed', [
+                'workflow_id' => $workflow->id,
+            ]);
             return [
                 'workflow_id' => $workflow->id,
                 'status' => 'completed',
                 'result' => $result,
+                'events' => $this->events,
             ];
         } catch (\Throwable $e) {
-            $this->abortAllDevices();
+            $this->recordEvent('workflow_failed', [
+                'workflow_id' => $workflow->id,
+                'error' => $e->getMessage(),
+            ], 'error');
+            $this->abortWorkflowDevices($nodes);
             throw $e;
         }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function getEvents(): array
+    {
+        return $this->events;
     }
 
     /**
@@ -78,16 +107,29 @@ class WorkflowRunService
     {
         $requiredNodes = $this->collectRequiredNodes($nodes);
         if (empty($requiredNodes)) {
+            $this->recordEvent('devices_check_skipped', [
+                'reason' => 'no_action_nodes',
+            ]);
             return;
         }
 
+        $this->recordEvent('devices_check_started', [
+            'required_count' => count($requiredNodes),
+        ]);
         $onlineNodes = $this->indexOnlineNodes($deviceStatus);
 
         foreach ($requiredNodes as $key => $label) {
             if (! isset($onlineNodes[$key])) {
+                $this->recordEvent('device_offline', [
+                    'device' => $label,
+                ], 'error');
                 throw new \RuntimeException("Device is offline or missing: {$label}");
             }
         }
+
+        $this->recordEvent('devices_check_passed', [
+            'online_count' => count($onlineNodes),
+        ]);
     }
 
     /**
@@ -166,18 +208,39 @@ class WorkflowRunService
         return $online;
     }
 
-    private function ensureAllDevicesOff(): void
+    /**
+     * @param array<int, mixed> $nodes
+     */
+    private function ensureWorkflowDevicesOff(array $nodes): void
     {
-        $baseUrl = rtrim((string) config('services.node_server.base_url'), '/');
-        $response = Http::timeout(15)->post($baseUrl . '/v1/device-status/ensure-off');
-
-        if ($response->failed()) {
-            throw new \RuntimeException('Failed to turn off devices.');
+        $controlUrlIds = $this->collectActionControlUrls($nodes);
+        if (empty($controlUrlIds)) {
+            $this->recordEvent('workflow_devices_off_skipped', [
+                'reason' => 'no_action_nodes',
+            ]);
+            return;
         }
 
-        $payload = $response->json();
-        if (isset($payload['success']) && $payload['success'] === false) {
-            throw new \RuntimeException('Failed to turn off devices.');
+        $this->recordEvent('workflow_devices_off_started', [
+            'count' => count($controlUrlIds),
+        ]);
+
+        foreach ($controlUrlIds as $controlUrlId) {
+            try {
+                $this->recordEvent('workflow_device_off', [
+                    'control_url_id' => $controlUrlId,
+                ]);
+                $this->controlUrlService->execute($controlUrlId, [
+                    'action_type' => $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control',
+                    'state' => 'off',
+                ]);
+            } catch (\Throwable $e) {
+                $this->recordEvent('workflow_device_off_failed', [
+                    'control_url_id' => $controlUrlId,
+                    'error' => $e->getMessage(),
+                ], 'error');
+                throw new \RuntimeException('Failed to turn off workflow devices.');
+            }
         }
     }
 
@@ -209,6 +272,10 @@ class WorkflowRunService
             $steps++;
 
             if ($currentId === $endId) {
+                $this->recordEvent('workflow_end_reached', [
+                    'node_id' => $currentId,
+                    'steps' => $steps,
+                ]);
                 return [
                     'visited' => $visited,
                     'steps' => $steps,
@@ -222,6 +289,10 @@ class WorkflowRunService
             $visited[] = $currentId;
 
             $type = $node['type'] ?? null;
+            $this->recordEvent('node_enter', [
+                'node_id' => $currentId,
+                'type' => $type,
+            ]);
             if ($type === 'action') {
                 $this->runActionNode($node);
                 $currentId = $this->resolveNextNodeId($currentId, $edgeMap, null);
@@ -330,17 +401,59 @@ class WorkflowRunService
         }
         $duration = (int) ($node['duration_seconds'] ?? 0);
 
-        $this->controlUrlService->execute($controlUrlId, [
-            'state' => 'on',
-        ]);
+        $this->assertActionDeviceOnline($node);
+
+        try {
+            $this->recordEvent('action_on', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+            ]);
+            $this->controlUrlService->execute($controlUrlId, [
+                // Ensure action_type is always present for IoT firmware routing.
+                'action_type' => $this->resolveControlUrlInputType($controlUrlId),
+                'state' => 'on',
+            ]);
+        } catch (\Throwable $e) {
+            $this->recordEvent('action_on_failed', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'error' => $e->getMessage(),
+            ], 'error');
+            throw $e;
+        }
 
         if ($duration > 0) {
             sleep($duration);
         }
 
-        $this->controlUrlService->execute($controlUrlId, [
-            'state' => 'off',
-        ]);
+        try {
+            $this->recordEvent('action_off', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+            ]);
+            $this->controlUrlService->execute($controlUrlId, [
+                // Ensure action_type is always present for IoT firmware routing.
+                'action_type' => $this->resolveControlUrlInputType($controlUrlId),
+                'state' => 'off',
+            ]);
+        } catch (\Throwable $e) {
+            $this->recordEvent('action_off_failed', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'error' => $e->getMessage(),
+            ], 'error');
+            throw $e;
+        }
+    }
+
+    private function resolveControlUrlInputType(string $controlUrlId): ?string
+    {
+        $controlUrl = ControlUrl::find($controlUrlId);
+        if (! $controlUrl) {
+            return null;
+        }
+        $inputType = trim((string) ($controlUrl->input_type ?? ''));
+        return $inputType !== '' ? $inputType : null;
     }
 
     /**
@@ -363,7 +476,7 @@ class WorkflowRunService
         $threshold = (float) $value;
         $current = (float) $latest;
 
-        return match ($operator) {
+        $result = match ($operator) {
             '>' => $current > $threshold,
             '<' => $current < $threshold,
             '>=' => $current >= $threshold,
@@ -372,6 +485,16 @@ class WorkflowRunService
             '!=' => $current != $threshold,
             default => $current > $threshold,
         };
+
+        $this->recordEvent('condition_evaluated', [
+            'metric_key' => $metricKey,
+            'operator' => $operator,
+            'value' => $threshold,
+            'current' => $current,
+            'result' => $result,
+        ]);
+
+        return $result;
     }
 
     private function fetchLatestMetricValue(string $metricKey): ?float
@@ -414,12 +537,112 @@ class WorkflowRunService
         };
     }
 
-    private function abortAllDevices(): void
+    /**
+     * @param array<int, mixed> $nodes
+     */
+    private function abortWorkflowDevices(array $nodes): void
     {
         try {
-            $this->ensureAllDevicesOff();
+            $this->ensureWorkflowDevicesOff($nodes);
+            $this->recordEvent('workflow_devices_forced_off');
         } catch (\Throwable $e) {
+            $this->recordEvent('workflow_devices_force_off_failed', [
+                'error' => $e->getMessage(),
+            ], 'error');
             // ignore abort errors
         }
+    }
+
+    /**
+     * @param array<int, mixed> $nodes
+     * @return array<int, string>
+     */
+    private function collectActionControlUrls(array $nodes): array
+    {
+        $controlUrlIds = [];
+        foreach ($nodes as $node) {
+            if (! is_array($node)) {
+                continue;
+            }
+            if (($node['type'] ?? null) !== 'action') {
+                continue;
+            }
+            $controlUrlId = $node['control_url_id'] ?? null;
+            if (! $controlUrlId) {
+                continue;
+            }
+            $controlUrlIds[(string) $controlUrlId] = true;
+        }
+
+        return array_keys($controlUrlIds);
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     */
+    private function assertActionDeviceOnline(array $node): void
+    {
+        $controlUrlId = $node['control_url_id'] ?? null;
+        if (! $controlUrlId) {
+            return;
+        }
+
+        $controlUrl = ControlUrl::with('node.gateway')->find($controlUrlId);
+        if (! $controlUrl) {
+            $this->recordEvent('action_device_check_failed', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'error' => 'Control url not found',
+            ], 'error');
+            throw new \RuntimeException('Control url not found.');
+        }
+
+        $gatewayExternalId = $controlUrl->node?->gateway?->external_id;
+        $nodeExternalId = $controlUrl->node?->external_id;
+        if (! $gatewayExternalId || ! $nodeExternalId) {
+            $this->recordEvent('action_device_check_failed', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'error' => 'Missing gateway/node external id',
+            ], 'error');
+            throw new \RuntimeException('Device reference is missing gateway/node id.');
+        }
+
+        $this->recordEvent('action_device_check_started', [
+            'control_url_id' => $controlUrlId,
+            'node_id' => $node['id'] ?? null,
+            'gateway_id' => $gatewayExternalId,
+            'device_id' => $nodeExternalId,
+        ]);
+
+        $deviceStatus = $this->fetchDeviceStatus();
+        $onlineNodes = $this->indexOnlineNodes($deviceStatus);
+        $key = $gatewayExternalId . '::' . $nodeExternalId;
+        if (! isset($onlineNodes[$key])) {
+            $this->recordEvent('action_device_offline', [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'gateway_id' => $gatewayExternalId,
+                'device_id' => $nodeExternalId,
+            ], 'error');
+            throw new \RuntimeException("Device is offline or missing: {$gatewayExternalId} / {$nodeExternalId}");
+        }
+
+        $this->recordEvent('action_device_check_passed', [
+            'control_url_id' => $controlUrlId,
+            'node_id' => $node['id'] ?? null,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function recordEvent(string $type, array $context = [], string $level = 'info'): void
+    {
+        $this->events[] = array_merge([
+            'timestamp' => now()->toISOString(),
+            'type' => $type,
+            'level' => $level,
+        ], $context);
     }
 }

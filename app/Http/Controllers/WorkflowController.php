@@ -16,7 +16,7 @@ class WorkflowController extends Controller
         private readonly WorkflowQueryBuilder $workflowQueryBuilder,
         private readonly WorkflowRunService $workflowRunService
     ) {}
-    
+
     private function defaultDefinition(): array
     {
         return [
@@ -89,7 +89,9 @@ class WorkflowController extends Controller
             $result = $this->workflowRunService->run($workflow);
             return ApiResponse::success($result, 'Workflow executed successfully');
         } catch (\Throwable $e) {
-            return ApiResponse::error($e->getMessage(), 400);
+            $events = $this->workflowRunService->getEvents();
+            $errors = empty($events) ? null : ['events' => $events];
+            return ApiResponse::error($e->getMessage(), 400, $errors);
         }
     }
 }
