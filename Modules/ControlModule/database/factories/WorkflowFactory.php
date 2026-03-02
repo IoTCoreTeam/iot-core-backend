@@ -1,11 +1,11 @@
 <?php
 
-namespace Database\Factories;
+namespace Modules\ControlModule\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Workflow>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\Modules\ControlModule\Models\Workflow>
  */
 class WorkflowFactory extends Factory
 {

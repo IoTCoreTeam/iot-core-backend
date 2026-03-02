@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Queries;
+namespace Modules\ControlModule\QueryBuilders;
 
-use App\Models\Workflow;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Modules\ControlModule\Models\Workflow;
 
 class WorkflowQueryBuilder
 {

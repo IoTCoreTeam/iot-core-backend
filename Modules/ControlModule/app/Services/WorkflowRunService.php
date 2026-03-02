@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Services;
+namespace Modules\ControlModule\Services;
 
-use App\Models\Workflow;
 use Illuminate\Support\Facades\Http;
 use Modules\ControlModule\Models\ControlUrl;
+use Modules\ControlModule\Models\Workflow;
 use Modules\ControlModule\Services\ControlUrlService;
 
 class WorkflowRunService
@@ -14,10 +14,19 @@ class WorkflowRunService
      * @var array<int, array<string, mixed>>
      */
     private array $events = [];
+    /**
+     * @var null|callable
+     */
+    private $eventCallback = null;
 
     public function __construct(ControlUrlService $controlUrlService)
     {
         $this->controlUrlService = $controlUrlService;
+    }
+
+    public function setEventCallback(?callable $callback): void
+    {
+        $this->eventCallback = $callback;
     }
 
     /**
@@ -639,10 +648,14 @@ class WorkflowRunService
      */
     private function recordEvent(string $type, array $context = [], string $level = 'info'): void
     {
-        $this->events[] = array_merge([
+        $event = array_merge([
             'timestamp' => now()->toISOString(),
             'type' => $type,
             'level' => $level,
         ], $context);
+        $this->events[] = $event;
+        if ($this->eventCallback) {
+            ($this->eventCallback)($event);
+        }
     }
 }

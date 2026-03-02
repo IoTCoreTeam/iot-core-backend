@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace Modules\ControlModule\Http\Controllers;
 
-use App\Http\Requests\StoreWorkflowRequest;
-use App\Http\Requests\UpdateWorkflowRequest;
-use App\Models\Workflow;
-use App\Queries\WorkflowQueryBuilder;
-use App\Services\WorkflowRunService;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\ControlModule\Helpers\ApiResponse;
+use Modules\ControlModule\Http\Requests\StoreWorkflowRequest;
+use Modules\ControlModule\Http\Requests\UpdateWorkflowRequest;
+use Modules\ControlModule\Models\Workflow;
+use Modules\ControlModule\QueryBuilders\WorkflowQueryBuilder;
+use Modules\ControlModule\Services\WorkflowRunService;
 
 class WorkflowController extends Controller
 {
@@ -93,5 +94,47 @@ class WorkflowController extends Controller
             $errors = empty($events) ? null : ['events' => $events];
             return ApiResponse::error($e->getMessage(), 400, $errors);
         }
+    }
+
+    /**
+     * Stream workflow execution events via SSE.
+     */
+    public function runStream(Workflow $workflow)
+    {
+        return response()->stream(function () use ($workflow) {
+            $sendEvent = function (string $event, $data): void {
+                echo "event: {$event}\n";
+                echo 'data: ' . json_encode($data) . "\n\n";
+                if (function_exists('ob_flush')) {
+                    @ob_flush();
+                }
+                if (function_exists('flush')) {
+                    @flush();
+                }
+            };
+
+            $sendEvent('ready', ['connected' => true]);
+
+            $this->workflowRunService->setEventCallback(function (array $event) use ($sendEvent) {
+                $sendEvent('workflow-event', $event);
+            });
+
+            try {
+                $result = $this->workflowRunService->run($workflow);
+                $sendEvent('workflow-complete', $result);
+            } catch (\Throwable $e) {
+                $sendEvent('workflow-error', [
+                    'message' => $e->getMessage(),
+                    'events' => $this->workflowRunService->getEvents(),
+                ]);
+            } finally {
+                $this->workflowRunService->setEventCallback(null);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 }

@@ -1,10 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\WorkflowController;
 use Modules\ControlModule\Http\Controllers\ControlUrlController;
 use Modules\ControlModule\Http\Controllers\GatewayController;
 use Modules\ControlModule\Http\Controllers\NodeController;
+use Modules\ControlModule\Http\Controllers\WorkflowController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +46,7 @@ Route::middleware(['auth:api', 'admin'])->prefix('v1')->group(function () {
         Route::post('/', [WorkflowController::class, 'store'])->name('workflows.store');
         Route::put('{workflow}', [WorkflowController::class, 'update'])->name('workflows.update');
         Route::post('{workflow}/run', [WorkflowController::class, 'run'])->name('workflows.run');
+        Route::get('{workflow}/run/stream', [WorkflowController::class, 'runStream'])->name('workflows.run.stream');
         Route::delete('{workflow}', [WorkflowController::class, 'destroy'])->name('workflows.delete');
     });
 });

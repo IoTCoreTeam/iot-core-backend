@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Policies;
+namespace Modules\ControlModule\Policies;
 
 use App\Models\User;
-use App\Models\Workflow;
 use Illuminate\Auth\Access\Response;
+use Modules\ControlModule\Models\Workflow;
 
 class WorkflowPolicy
 {
