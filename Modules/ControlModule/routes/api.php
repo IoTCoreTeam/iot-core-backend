@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ControlAnalogSignalController;
 use Modules\ControlModule\Http\Controllers\ControlUrlController;
 use Modules\ControlModule\Http\Controllers\GatewayController;
 use Modules\ControlModule\Http\Controllers\NodeController;
@@ -38,6 +39,13 @@ Route::middleware(['auth:api', 'admin'])->prefix('v1')->group(function () {
         Route::put('{id}', [ControlUrlController::class, 'update'])->name('control-urls.update');
         Route::post('{id}/execute', [ControlUrlController::class, 'executeControlUrl'])->name('control-urls.execute');
         Route::delete('{id}', [ControlUrlController::class, 'delete'])->name('control-urls.delete');
+    });
+
+    Route::prefix('control-analog-signals')->group(function (): void {
+        Route::get('/', [ControlAnalogSignalController::class, 'index'])
+            ->name('control-analog-signals.index');
+        Route::post('createorupdate', [ControlAnalogSignalController::class, 'createOrUpdate'])
+            ->name('control-analog-signals.createorupdate');
     });
 
     Route::prefix('workflows')->group(function (): void {

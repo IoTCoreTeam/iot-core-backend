@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('input_type');
             $table->timestamps();
         });
+
     }
 
     /**

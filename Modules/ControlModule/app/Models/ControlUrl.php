@@ -5,6 +5,7 @@ namespace Modules\ControlModule\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\ControlAnalogSignal;
 
 class ControlUrl extends Model
 {
@@ -24,5 +25,10 @@ class ControlUrl extends Model
     public function node()
     {
         return $this->belongsTo(Node::class);
+    }
+
+    public function analogSignal()
+    {
+        return $this->hasOne(ControlAnalogSignal::class);
     }
 }

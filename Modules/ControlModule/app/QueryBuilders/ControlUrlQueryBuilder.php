@@ -26,10 +26,20 @@ class ControlUrlQueryBuilder
             ->unique()
             ->values();
 
+        $relations = [];
+
         if ($includes->contains('gateway')) {
-            $query->with('node.gateway');
+            $relations[] = 'node.gateway';
         } elseif ($includes->contains('node')) {
-            $query->with('node');
+            $relations[] = 'node';
+        }
+
+        if ($includes->contains('analog_signal') || $includes->contains('analogSignal')) {
+            $relations[] = 'analogSignal';
+        }
+
+        if ($relations) {
+            $query->with($relations);
         }
 
         if ($request->has('name')) {
