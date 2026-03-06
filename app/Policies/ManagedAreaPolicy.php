@@ -2,7 +2,7 @@
 
 namespace App\Policies;
 
-use App\Models\ManagedArea;
+use Modules\MapModule\Models\ManagedArea;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 

@@ -239,10 +239,17 @@ class WorkflowRunService
                 $this->recordEvent('workflow_device_off', [
                     'control_url_id' => $controlUrlId,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, [
-                    'action_type' => $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control',
-                    'state' => 'off',
-                ]);
+                $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
+                $normalizedType = $this->normalizeControlInputType($actionType);
+                $payload = [
+                    'action_type' => $actionType,
+                ];
+                if ($normalizedType === 'analog') {
+                    $payload['value'] = 0;
+                } else {
+                    $payload['state'] = 'off';
+                }
+                $this->controlUrlService->execute($controlUrlId, $payload);
             } catch (\Throwable $e) {
                 $this->recordEvent('workflow_device_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -409,8 +416,85 @@ class WorkflowRunService
             throw new \RuntimeException('Action node missing control_url_id.');
         }
         $duration = (int) ($node['duration_seconds'] ?? 0);
+        $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
+        $normalizedType = $this->normalizeControlInputType($actionType);
+        $actionValue = $node['action_value'] ?? null;
 
         $this->assertActionDeviceOnline($node);
+
+        if ($actionValue !== null && $normalizedType === 'analog') {
+            if (! is_numeric($actionValue)) {
+                throw new \RuntimeException('Analog action value must be numeric.');
+            }
+            $value = (float) $actionValue;
+            try {
+                $this->recordEvent('action_on', [
+                    'control_url_id' => $controlUrlId,
+                    'node_id' => $node['id'] ?? null,
+                    'value' => $value,
+                ]);
+                $this->controlUrlService->execute($controlUrlId, [
+                    'action_type' => $actionType,
+                    'value' => $value,
+                ]);
+            } catch (\Throwable $e) {
+                $this->recordEvent('action_on_failed', [
+                    'control_url_id' => $controlUrlId,
+                    'node_id' => $node['id'] ?? null,
+                    'error' => $e->getMessage(),
+                ], 'error');
+                throw $e;
+            }
+            return;
+        }
+
+        if ($actionValue !== null && $normalizedType === 'digital') {
+            $state = strtolower((string) $actionValue);
+            if ($state !== 'on' && $state !== 'off') {
+                throw new \RuntimeException('Digital action value must be "on" or "off".');
+            }
+            try {
+                $this->recordEvent($state === 'on' ? 'action_on' : 'action_off', [
+                    'control_url_id' => $controlUrlId,
+                    'node_id' => $node['id'] ?? null,
+                ]);
+                $this->controlUrlService->execute($controlUrlId, [
+                    // Ensure action_type is always present for IoT firmware routing.
+                    'action_type' => $actionType,
+                    'state' => $state,
+                ]);
+            } catch (\Throwable $e) {
+                $this->recordEvent($state === 'on' ? 'action_on_failed' : 'action_off_failed', [
+                    'control_url_id' => $controlUrlId,
+                    'node_id' => $node['id'] ?? null,
+                    'error' => $e->getMessage(),
+                ], 'error');
+                throw $e;
+            }
+
+            if ($state === 'on' && $duration > 0) {
+                sleep($duration);
+                try {
+                    $this->recordEvent('action_off', [
+                        'control_url_id' => $controlUrlId,
+                        'node_id' => $node['id'] ?? null,
+                    ]);
+                    $this->controlUrlService->execute($controlUrlId, [
+                        // Ensure action_type is always present for IoT firmware routing.
+                        'action_type' => $actionType,
+                        'state' => 'off',
+                    ]);
+                } catch (\Throwable $e) {
+                    $this->recordEvent('action_off_failed', [
+                        'control_url_id' => $controlUrlId,
+                        'node_id' => $node['id'] ?? null,
+                        'error' => $e->getMessage(),
+                    ], 'error');
+                    throw $e;
+                }
+            }
+            return;
+        }
 
         try {
             $this->recordEvent('action_on', [
@@ -419,7 +503,7 @@ class WorkflowRunService
             ]);
             $this->controlUrlService->execute($controlUrlId, [
                 // Ensure action_type is always present for IoT firmware routing.
-                'action_type' => $this->resolveControlUrlInputType($controlUrlId),
+                'action_type' => $actionType,
                 'state' => 'on',
             ]);
         } catch (\Throwable $e) {
@@ -442,7 +526,7 @@ class WorkflowRunService
             ]);
             $this->controlUrlService->execute($controlUrlId, [
                 // Ensure action_type is always present for IoT firmware routing.
-                'action_type' => $this->resolveControlUrlInputType($controlUrlId),
+                'action_type' => $actionType,
                 'state' => 'off',
             ]);
         } catch (\Throwable $e) {
@@ -463,6 +547,21 @@ class WorkflowRunService
         }
         $inputType = trim((string) ($controlUrl->input_type ?? ''));
         return $inputType !== '' ? $inputType : null;
+    }
+
+    private function normalizeControlInputType(?string $inputType): ?string
+    {
+        $normalized = strtolower(trim((string) ($inputType ?? '')));
+        if ($normalized === '') {
+            return null;
+        }
+        if (str_contains($normalized, 'analog')) {
+            return 'analog';
+        }
+        if (str_contains($normalized, 'digital') || str_contains($normalized, 'relay')) {
+            return 'digital';
+        }
+        return $normalized;
     }
 
     /**

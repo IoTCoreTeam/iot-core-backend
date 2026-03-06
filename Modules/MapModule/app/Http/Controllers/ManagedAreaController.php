@@ -1,12 +1,13 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace Modules\MapModule\Http\Controllers;
 
 use App\Helpers\ApiResponse;
 use App\Helpers\SystemLogHelper;
-use App\Http\Requests\StoreManagedAreaRequest;
-use App\Http\Requests\UpdateManagedAreaRequest;
-use App\Models\ManagedArea;
+use App\Http\Controllers\Controller;
+use Modules\MapModule\Http\Requests\ManagedArea\StoreManagedAreaRequest;
+use Modules\MapModule\Http\Requests\ManagedArea\UpdateManagedAreaRequest;
+use Modules\MapModule\Models\ManagedArea;
 use Illuminate\Http\Request;
 
 class ManagedAreaController extends Controller

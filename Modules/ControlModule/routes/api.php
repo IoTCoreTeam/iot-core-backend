@@ -18,7 +18,7 @@ use Modules\ControlModule\Http\Controllers\WorkflowController;
 |
 */
 
-Route::middleware(['auth:api', 'admin'])->prefix('v1')->group(function () {
+Route::middleware(['auth:api', 'admin_or_engineer'])->prefix('v1')->group(function () {
 
     Route::prefix('gateways')->group(function (): void {
         Route::get('/', [GatewayController::class, 'index'])->name('gateways.index');

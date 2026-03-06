@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests;
+namespace Modules\MapModule\Http\Requests\ManagedArea;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreManagedAreaRequest extends FormRequest
+class UpdateManagedAreaRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,9 +22,9 @@ class StoreManagedAreaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:120', 'unique:managed_areas,name'],
-            'geom_type' => ['required', 'string', 'in:polygon,rectangle'],
-            'geometry' => ['required', 'array'],
+            'name' => ['required', 'string', 'max:120', 'unique:managed_areas,name,' . $this->route('id')],
+            'geom_type' => ['sometimes', 'string', 'in:polygon,rectangle'],
+            'geometry' => ['sometimes', 'array'],
             'bbox' => ['nullable', 'array'],
         ];
     }
