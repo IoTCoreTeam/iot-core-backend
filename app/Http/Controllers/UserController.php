@@ -2,15 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\User;
 use App\Http\Requests\UpdateuserRequest;
 use App\Helpers\ApiResponse;
 use App\Helpers\SystemLogHelper;
 use App\QueryBuilders\UserQueryBuilder;
+use App\Services\NotificationService;
+use App\Services\UserService;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private NotificationService $notificationService,
+        private UserService $userService)
+    {
+    }
+
     public function index(Request $request)
     {
         if ($request->has('id')) {
@@ -20,19 +29,20 @@ class UserController extends Controller
         return UserQueryBuilder::fromRequest($request);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
-            User::destroy($id);
-            SystemLogHelper::log('user.delete.success', 'User deleted successfully', [
-                'user_id' => $id,
-            ]);
+            $user = $this->userService->findUserOrError($id);
+            if ($user instanceof JsonResponse) {return $user;}
+
+            $actor = $request->user();
+            $this->notificationService->notifyUserAction($actor, $user, 'user.delete', ['user_id' => $user->id]);
+
+            $user->delete();
+            SystemLogHelper::log('user.delete.success', 'User deleted successfully', ['user_id' => $user->id]);
             return ApiResponse::success(null, 'User deleted successfully');
         } catch (\Exception $e) {
-            SystemLogHelper::log('user.delete.failed', 'Failed to delete user', [
-                'user_id' => $id,
-                'error' => $e->getMessage(),
-            ], ['level' => 'error']);
+            SystemLogHelper::log('user.delete.failed', 'Failed to delete user', ['user_id' => $id, 'error' => $e->getMessage()], ['level' => 'error']);
             return ApiResponse::error('Failed to delete user', 500, $e->getMessage());
         }
     }
@@ -40,28 +50,18 @@ class UserController extends Controller
     public function update(UpdateuserRequest $request, $id)
     {
         try {
-            $user = User::find($id);
-            if (! $user) {return ApiResponse::error('User not found', 404);}
+            $user = $this->userService->findUserOrError($id);
+            if ($user instanceof JsonResponse) {return $user;}
+            $user = $this->userService->updateUserFromRequest($request, $user);
 
-            $data = $request->validated();
+            SystemLogHelper::log('user.update.success', 'User updated successfully', ['user_id' => $user->id]);
 
-            if (! array_key_exists('password', $data)) {
-                unset($data['password']);
-            }
-
-            $user->fill($data);
-            $user->save();
-
-            SystemLogHelper::log('user.update.success', 'User updated successfully', [
-                'user_id' => $user->id,
-            ]);
+            $actor = $request->user();
+            $this->notificationService->notifyUserAction($actor, $user, 'user.update', ['user_id' => $user->id]);
 
             return ApiResponse::success($user, 'User updated successfully');
         } catch (\Exception $e) {
-            SystemLogHelper::log('user.update.failed', 'Failed to update user', [
-                'user_id' => $id,
-                'error' => $e->getMessage(),
-            ], ['level' => 'error']);
+            SystemLogHelper::log('user.update.failed', 'Failed to update user', ['user_id' => $id, 'error' => $e->getMessage()], ['level' => 'error']);
             return ApiResponse::error('Failed to update user', 500, $e->getMessage());
         }
     }
@@ -77,9 +77,7 @@ class UserController extends Controller
             return response()->json($users);
 
         } catch (\Exception $e) {
-            SystemLogHelper::log('user.filter.failed', 'Failed to filter users', [
-                'error' => $e->getMessage(),
-            ], ['level' => 'error']);
+            SystemLogHelper::log('user.filter.failed', 'Failed to filter users', ['error' => $e->getMessage()], ['level' => 'error']);
             return ApiResponse::error('Failed to filter users', 500, $e->getMessage());
         }
     }
