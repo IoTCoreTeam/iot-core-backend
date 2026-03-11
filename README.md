@@ -8,6 +8,49 @@ The backend provides centralized authentication with Laravel Passport, including
 
 ---
 
+## Auth Flow (Frontend ↔ Backend)
+
+This project uses Laravel Passport access tokens (Bearer) plus an HTTP-only refresh token cookie. The frontend never reads the refresh token directly; it relies on `credentials: "include"` so the browser attaches the cookie.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as Frontend (Nuxt)
+    participant BE as Backend (Laravel)
+    participant DB as DB (Passport)
+
+    FE->>BE: POST /api/login (email, password)
+    BE->>DB: Verify user + create access token + refresh token
+    BE-->>FE: 200 {access_token, token_type, expires_at, user}
+    BE-->>FE: Set-Cookie iot_core_refresh_token (HttpOnly)
+    FE->>BE: Authenticated API calls\nAuthorization: Bearer <access_token>
+    BE->>DB: Validate access token + scopes/roles
+    BE-->>FE: Protected response
+
+    FE->>BE: POST /api/refresh-token (credentials: include)
+    BE->>DB: Validate refresh token + revoke old access token
+    BE-->>FE: 200 {new access_token, token_type, expires_at, user}
+    BE-->>FE: Set-Cookie iot_core_refresh_token (rotated)
+
+    FE->>BE: POST /api/logout (credentials: include)
+    BE->>DB: Revoke access token + refresh token
+    BE-->>FE: Set-Cookie iot_core_refresh_token (expired)
+```
+
+### Key endpoints used by the frontend
+1. `POST /api/login` issues an access token and sets the refresh cookie.
+2. `POST /api/refresh-token` rotates tokens using the refresh cookie.
+3. `POST /api/logout` revokes tokens and expires the refresh cookie.
+
+### Implementation references
+1. Backend auth controller and refresh cookie handling: `backend/app/Http/Controllers/Api/AuthController.php`
+2. Access/refresh token issuance and revocation: `backend/app/Services/AuthService.php`
+3. Passport token TTL configuration: `backend/app/Providers/AppServiceProvider.php`
+4. Frontend login + token storage: `frontend/app/pages/login.vue`, `frontend/stores/auth.ts`
+5. Frontend refresh middleware: `frontend/app/middleware/auth.global.ts`
+
+---
+
 ## Technical Setup
 
 ### 1. Prerequisites
