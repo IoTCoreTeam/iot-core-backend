@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Notifications\UserActionNotification;
+use App\Notifications\WorkflowActionNotification;
+use Modules\ControlModule\Models\Workflow;
 
 class NotificationService
 {
@@ -19,5 +21,15 @@ class NotificationService
                 $meta
             ));
         }
+    }
+
+    public function notifyWorkflowAction(User $actor, Workflow $workflow, string $action, array $meta = []): void
+    {
+        $actor->notify(new WorkflowActionNotification(
+            $actor,
+            $workflow,
+            $action,
+            $meta
+        ));
     }
 }

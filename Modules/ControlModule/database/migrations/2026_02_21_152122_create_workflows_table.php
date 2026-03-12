@@ -15,7 +15,8 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('name');
             $table->json('definition');
-            $table->string('status', 20)->default('draft');
+            $table->json('control_definition')->nullable();
+            $table->enum('status', ['approved', 'inactive'])->default('inactive');
             $table->timestamps();
         });
     }

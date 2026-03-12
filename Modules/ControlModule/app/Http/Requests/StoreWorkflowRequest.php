@@ -40,7 +40,7 @@ class StoreWorkflowRequest extends FormRequest
             'control_definition.edges.*.source' => ['required_with:control_definition.edges', 'string'],
             'control_definition.edges.*.target' => ['required_with:control_definition.edges', 'string'],
             'control_definition.edges.*.branch' => ['nullable', 'string', 'in:true,false'],
-            'status' => ['sometimes', 'string', 'in:draft,active,inactive'],
+            'status' => ['sometimes', 'string', 'in:approved,inactive'],
         ];
     }
 

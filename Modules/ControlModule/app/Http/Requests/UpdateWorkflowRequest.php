@@ -25,7 +25,7 @@ class UpdateWorkflowRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'definition' => ['nullable', 'array'],
             'control_definition' => ['nullable', 'array'],
-            'status' => ['sometimes', 'required', 'string', 'in:draft,active,inactive'],
+            'status' => ['sometimes', 'required', 'string', 'in:approved,inactive'],
         ];
     }
 }

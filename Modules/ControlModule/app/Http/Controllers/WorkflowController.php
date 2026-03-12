@@ -3,6 +3,8 @@
 namespace Modules\ControlModule\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\SystemLogHelper;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Modules\ControlModule\Helpers\ApiResponse;
 use Modules\ControlModule\Http\Requests\StoreWorkflowRequest;
@@ -15,7 +17,8 @@ class WorkflowController extends Controller
 {
     public function __construct(
         private readonly WorkflowQueryBuilder $workflowQueryBuilder,
-        private readonly WorkflowRunService $workflowRunService
+        private readonly WorkflowRunService $workflowRunService,
+        private readonly NotificationService $notificationService
     ) {}
 
     private function defaultDefinition(): array
@@ -84,11 +87,42 @@ class WorkflowController extends Controller
     /**
      * Execute a workflow.
      */
-    public function run(Workflow $workflow)
+    public function run(Request $request, Workflow $workflow)
     {
         try {
             $result = $this->workflowRunService->run($workflow);
+            $actor = $request->user();
+            if ($actor) {
+                $this->notificationService->notifyWorkflowAction(
+                    $actor,
+                    $workflow,
+                    'workflow.run',
+                    ['workflow_id' => $workflow->id]
+                );
+            }
+            SystemLogHelper::log(
+                'workflow.run.success',
+                'Workflow executed successfully',
+                ['workflow_id' => $workflow->id]
+            );
             return ApiResponse::success($result, 'Workflow executed successfully');
+        } catch (\Throwable $e) {
+            $events = $this->workflowRunService->getEvents();
+            $errors = empty($events) ? null : ['events' => $events];
+            SystemLogHelper::log(
+                'workflow.run.failed',
+                'Failed to execute workflow',
+                ['workflow_id' => $workflow->id, 'error' => $e->getMessage()],
+                ['level' => 'error']
+            );
+            return ApiResponse::error($e->getMessage(), 400, $errors);
+        }
+    }
+    public function stop(Workflow $workflow)
+    {
+        try {
+            $result = $this->workflowRunService->stop($workflow);
+            return ApiResponse::success($result, 'Workflow devices stopped successfully');
         } catch (\Throwable $e) {
             $events = $this->workflowRunService->getEvents();
             $errors = empty($events) ? null : ['events' => $events];

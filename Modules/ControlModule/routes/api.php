@@ -54,6 +54,7 @@ Route::middleware(['auth:api', 'admin_or_engineer'])->prefix('v1')->group(functi
         Route::post('/', [WorkflowController::class, 'store'])->name('workflows.store');
         Route::put('{workflow}', [WorkflowController::class, 'update'])->name('workflows.update');
         Route::post('{workflow}/run', [WorkflowController::class, 'run'])->name('workflows.run');
+        Route::post('{workflow}/stop', [WorkflowController::class, 'stop'])->name('workflows.stop');
         Route::get('{workflow}/run/stream', [WorkflowController::class, 'runStream'])->name('workflows.run.stream');
         Route::delete('{workflow}', [WorkflowController::class, 'destroy'])->name('workflows.delete');
     });

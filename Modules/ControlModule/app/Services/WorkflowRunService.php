@@ -2,6 +2,9 @@
 
 namespace Modules\ControlModule\Services;
 
+use App\Helpers\SystemLogHelper;
+use App\Services\NotificationService;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Modules\ControlModule\Models\ControlUrl;
 use Modules\ControlModule\Models\Workflow;
@@ -19,8 +22,10 @@ class WorkflowRunService
      */
     private $eventCallback = null;
 
-    public function __construct(ControlUrlService $controlUrlService)
-    {
+    public function __construct(
+        ControlUrlService $controlUrlService,
+        private readonly NotificationService $notificationService
+    ) {
         $this->controlUrlService = $controlUrlService;
     }
 
@@ -60,6 +65,20 @@ class WorkflowRunService
             $this->recordEvent('workflow_completed', [
                 'workflow_id' => $workflow->id,
             ]);
+            SystemLogHelper::log(
+                'workflow.run.completed',
+                'Workflow run completed',
+                ['workflow_id' => $workflow->id]
+            );
+            $actor = Auth::user();
+            if ($actor) {
+                $this->notificationService->notifyWorkflowAction(
+                    $actor,
+                    $workflow,
+                    'workflow.run.completed',
+                    ['workflow_id' => $workflow->id]
+                );
+            }
             return [
                 'workflow_id' => $workflow->id,
                 'status' => 'completed',
@@ -71,6 +90,21 @@ class WorkflowRunService
                 'workflow_id' => $workflow->id,
                 'error' => $e->getMessage(),
             ], 'error');
+            SystemLogHelper::log(
+                'workflow.run.failed',
+                'Workflow run failed',
+                ['workflow_id' => $workflow->id, 'error' => $e->getMessage()],
+                ['level' => 'error']
+            );
+            $actor = Auth::user();
+            if ($actor) {
+                $this->notificationService->notifyWorkflowAction(
+                    $actor,
+                    $workflow,
+                    'workflow.run.failed',
+                    ['workflow_id' => $workflow->id]
+                );
+            }
             $this->abortWorkflowDevices($nodes);
             throw $e;
         }
@@ -82,6 +116,50 @@ class WorkflowRunService
     public function getEvents(): array
     {
         return $this->events;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function stop(Workflow $workflow): array
+    {
+        $this->events = [];
+        $this->recordEvent('workflow_stop_requested', [
+            'workflow_id' => $workflow->id,
+        ]);
+
+        $definition = $workflow->control_definition ?? $workflow->definition ?? null;
+        if (! is_array($definition) || empty($definition['nodes'])) {
+            $this->recordEvent('workflow_stop_skipped', [
+                'workflow_id' => $workflow->id,
+                'reason' => 'empty_definition',
+            ]);
+            return [
+                'workflow_id' => $workflow->id,
+                'status' => 'skipped',
+                'events' => $this->events,
+            ];
+        }
+
+        $nodes = $definition['nodes'] ?? [];
+
+        try {
+            $this->ensureWorkflowDevicesOff($nodes);
+            $this->recordEvent('workflow_stop_completed', [
+                'workflow_id' => $workflow->id,
+            ]);
+            return [
+                'workflow_id' => $workflow->id,
+                'status' => 'stopped',
+                'events' => $this->events,
+            ];
+        } catch (\Throwable $e) {
+            $this->recordEvent('workflow_stop_failed', [
+                'workflow_id' => $workflow->id,
+                'error' => $e->getMessage(),
+            ], 'error');
+            throw $e;
+        }
     }
 
     /**
