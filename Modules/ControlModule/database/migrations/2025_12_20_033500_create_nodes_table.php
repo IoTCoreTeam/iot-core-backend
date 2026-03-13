@@ -19,7 +19,7 @@ return new class extends Migration
 
             $table->string('mac_address')->nullable();
             $table->string('ip_address')->nullable();
-            $table->enum('type', ['controller', 'sensor', 'other'])->default('other');
+            $table->enum('type', ['controller', 'sensor', 'node'])->default('node');
 
             $table->timestamps();
 

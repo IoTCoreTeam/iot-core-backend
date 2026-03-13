@@ -11,12 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('fingerprint_rssi', function (Blueprint $table) {
-            $table->unsignedBigInteger('fingerprint_id');
-            $table->unsignedBigInteger('access_point_id');
-            $table->integer('rssi');
-            $table->primary(['fingerprint_id', 'access_point_id']);
+        Schema::create('managed_area_node', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('managed_area_id')->constrained('managed_areas')->cascadeOnDelete();
+            $table->foreignUuid('node_id')->constrained('nodes')->cascadeOnDelete();
             $table->timestamps();
+
+            $table->unique(['managed_area_id', 'node_id']);
         });
     }
 
@@ -25,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('fingerprint_rssi');
+        Schema::dropIfExists('managed_area_node');
     }
 };

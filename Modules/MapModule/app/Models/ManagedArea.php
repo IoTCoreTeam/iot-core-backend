@@ -29,4 +29,9 @@ class ManagedArea extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function nodes()
+    {
+        return $this->belongsToMany(\Modules\ControlModule\Models\Node::class, 'managed_area_node');
+    }
 }

@@ -30,6 +30,8 @@ class NodeQueryBuilder
             }
         }
 
+        $query->with('managedAreas:id,name');
+
         return $query;
     }
 

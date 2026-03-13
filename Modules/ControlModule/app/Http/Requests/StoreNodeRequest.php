@@ -27,7 +27,7 @@ class StoreNodeRequest extends FormRequest
             'name' => 'nullable|string|max:255',
             'mac_address' => 'nullable|string|max:255',
             'ip_address' => 'nullable|string|max:45',
-            'type' => 'required|string|in:controller,sensor',
+            'type' => 'required|string|in:controller,sensor,node',
         ];
     }
 }

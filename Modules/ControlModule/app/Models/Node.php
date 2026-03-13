@@ -33,6 +33,11 @@ class Node extends Model
         return $this->hasMany(ControlUrl::class);
     }
 
+    public function managedAreas()
+    {
+        return $this->belongsToMany(\Modules\MapModule\Models\ManagedArea::class, 'managed_area_node');
+    }
+
     public function scopeSearch($query, ?string $keyword)
     {
         if (! $keyword) {

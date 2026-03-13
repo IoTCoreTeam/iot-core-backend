@@ -16,7 +16,9 @@ class ManagedAreaController extends Controller
     {
         try {
             $user = $request->user();
+
             $query = ManagedArea::query()->where('user_id', $user->id)->latest();
+
             if ($request->has('id')) {
                 return ApiResponse::success($query->where('id', $request->query('id'))->firstOrFail());
             }
@@ -32,14 +34,10 @@ class ManagedAreaController extends Controller
     public function store(StoreManagedAreaRequest $request)
     {
         try {
-            $data = $request->validated();
-            $data['user_id'] = $request->user()->id;
 
-            $managedArea = ManagedArea::create($data);
+            $managedArea = ManagedArea::create($request->validated(), ['user_id' => $request->user()->id,]);
 
-            SystemLogHelper::log('managed_area.create.success', 'Managed area created', [
-                'managed_area_id' => $managedArea->id,
-            ]);
+            SystemLogHelper::log('managed_area.create.success', 'Managed area created', ['managed_area_id' => $managedArea->id]);
 
             return ApiResponse::success($managedArea, 'Managed area created successfully', 201);
         } catch (\Exception $e) {
@@ -53,25 +51,32 @@ class ManagedAreaController extends Controller
     public function update(UpdateManagedAreaRequest $request, $id)
     {
         try {
-            $managedArea = ManagedArea::query()->where('id', $id)->where('user_id', $request->user()->id)->first();
+            $managedArea = ManagedArea::where('id', $id)->where('user_id', $request->user()->id)->first();
 
-            if (! $managedArea) {
+            if (!$managedArea) {
                 return ApiResponse::error('Managed area not found', 404);
             }
 
-            $managedArea->fill($request->validated());
-            $managedArea->save();
+            $managedArea->update($request->validated());
 
-            SystemLogHelper::log('managed_area.update.success', 'Managed area updated', [
-                'managed_area_id' => $managedArea->id,
-            ]);
+            SystemLogHelper::log(
+                'managed_area.update.success',
+                'Managed area updated',
+                ['managed_area_id' => $managedArea->id]
+            );
 
             return ApiResponse::success($managedArea, 'Managed area updated successfully');
         } catch (\Exception $e) {
-            SystemLogHelper::log('managed_area.update.failed', 'Failed to update managed area', [
-                'managed_area_id' => $id,
-                'error' => $e->getMessage(),
-            ], ['level' => 'error']);
+            SystemLogHelper::log(
+                'managed_area.update.failed',
+                'Failed to update managed area',
+                [
+                    'managed_area_id' => $id,
+                    'error' => $e->getMessage(),
+                ],
+                ['level' => 'error']
+            );
+
             return ApiResponse::error('Failed to update managed area', 500, $e->getMessage());
         }
     }
