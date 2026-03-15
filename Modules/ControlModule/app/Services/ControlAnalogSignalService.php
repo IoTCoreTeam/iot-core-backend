@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Services;
+namespace Modules\ControlModule\Services;
 
-use App\Helpers\SystemLogHelper;
-use App\Models\ControlAnalogSignal;
 use Illuminate\Validation\ValidationException;
+use Modules\ControlModule\Helpers\SystemLogHelper;
+use Modules\ControlModule\Models\ControlAnalogSignal;
 use Throwable;
 
 class ControlAnalogSignalService

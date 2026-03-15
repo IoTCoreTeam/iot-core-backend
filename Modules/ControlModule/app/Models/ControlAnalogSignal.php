@@ -1,15 +1,13 @@
 <?php
 
-namespace App\Models;
+namespace Modules\ControlModule\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Modules\ControlModule\Models\ControlUrl;
-
 class ControlAnalogSignal extends Model
 {
-    /** @use HasFactory<\Database\Factories\ControlAnalogSignalFactory> */
+    /** @use HasFactory<\Modules\ControlModule\Database\Factories\ControlAnalogSignalFactory> */
     use HasFactory, HasUuids;
 
     protected $keyType = 'string';

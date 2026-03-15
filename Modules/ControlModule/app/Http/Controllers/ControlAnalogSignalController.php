@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace Modules\ControlModule\Http\Controllers;
 
-use App\Helpers\ApiResponse;
-use App\Models\ControlAnalogSignal;
-use App\Http\Requests\StoreControlAnalogSignalRequest;
-use App\Http\Requests\UpdateControlAnalogSignalRequest;
-use App\Services\ControlAnalogSignalService;
+use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Modules\ControlModule\Helpers\ApiResponse;
+use Modules\ControlModule\Http\Requests\StoreControlAnalogSignalRequest;
+use Modules\ControlModule\Http\Requests\UpdateControlAnalogSignalRequest;
+use Modules\ControlModule\Models\ControlAnalogSignal;
+use Modules\ControlModule\Services\ControlAnalogSignalService;
 use Throwable;
 
 class ControlAnalogSignalController extends Controller

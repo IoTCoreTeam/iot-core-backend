@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Policies;
+namespace Modules\ControlModule\Policies;
 
-use App\Models\ControlAnalogSignal;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
+use Modules\ControlModule\Models\ControlAnalogSignal;
 
 class ControlAnalogSignalPolicy
 {

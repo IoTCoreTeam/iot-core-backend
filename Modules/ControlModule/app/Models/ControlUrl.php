@@ -5,7 +5,7 @@ namespace Modules\ControlModule\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use App\Models\ControlAnalogSignal;
+use Modules\ControlModule\Models\ControlAnalogSignal;
 
 class ControlUrl extends Model
 {

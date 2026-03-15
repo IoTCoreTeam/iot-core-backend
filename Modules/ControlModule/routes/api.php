@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ControlAnalogSignalController;
+use Modules\ControlModule\Http\Controllers\ControlAnalogSignalController;
 use Modules\ControlModule\Http\Controllers\ControlUrlController;
 use Modules\ControlModule\Http\Controllers\GatewayController;
 use Modules\ControlModule\Http\Controllers\NodeController;
