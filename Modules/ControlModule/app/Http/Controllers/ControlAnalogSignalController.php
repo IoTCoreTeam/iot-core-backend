@@ -4,13 +4,11 @@ namespace Modules\ControlModule\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Modules\ControlModule\Helpers\ApiResponse;
 use Modules\ControlModule\Http\Requests\StoreControlAnalogSignalRequest;
 use Modules\ControlModule\Http\Requests\UpdateControlAnalogSignalRequest;
 use Modules\ControlModule\Models\ControlAnalogSignal;
 use Modules\ControlModule\Services\ControlAnalogSignalService;
-use Throwable;
 
 class ControlAnalogSignalController extends Controller
 {
@@ -25,15 +23,11 @@ class ControlAnalogSignalController extends Controller
             return ApiResponse::error('control_url_id is required', 422);
         }
 
-        try {
-            $signal = ControlAnalogSignal::query()
-                ->where('control_url_id', $controlUrlId)
-                ->first();
+        $signal = ControlAnalogSignal::query()
+            ->where('control_url_id', $controlUrlId)
+            ->first();
 
-            return ApiResponse::success($signal);
-        } catch (Throwable $e) {
-            return ApiResponse::error('Failed to fetch control analog signal', 500, $e->getMessage());
-        }
+        return ApiResponse::success($signal);
     }
 
     /**
@@ -86,14 +80,9 @@ class ControlAnalogSignalController extends Controller
 
     public function createOrUpdate(StoreControlAnalogSignalRequest $request)
     {
-        try {
-            $payload = $request->validated();
-            $signal = $this->controlAnalogSignalService->createOrUpdate($payload);
-            return ApiResponse::success($signal, 'Control analog signal saved successfully');
-        } catch (ValidationException $e) {
-            return ApiResponse::error($e->getMessage(), 422, $e->errors());
-        } catch (Throwable $e) {
-            return ApiResponse::error('Failed to save control analog signal', 500, $e->getMessage());
-        }
+        $payload = $request->validated();
+        $signal = $this->controlAnalogSignalService->createOrUpdate($payload);
+
+        return ApiResponse::success($signal, 'Control analog signal saved successfully');
     }
 }
