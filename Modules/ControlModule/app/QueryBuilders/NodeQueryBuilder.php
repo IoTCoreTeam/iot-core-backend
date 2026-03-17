@@ -40,7 +40,8 @@ class NodeQueryBuilder
      *     gateways: array<int, string>,
      *     nodes: array<int, string>,
      *     gateway_nodes: array<string, array<int, string>>,
-     *     node_details: array<int, array{external_id: string|null, name: string|null}>
+     *     node_details: array<int, array{external_id: string|null, name: string|null}>,
+     *     node_managed_areas: array<string, array<int, array{id: int, name: string|null, geom_type: string|null, geometry: mixed, bbox: mixed}>>
      * }
      */
     public static function getActiveDevicesPayload(): array
@@ -62,12 +63,14 @@ class NodeQueryBuilder
             ])
             ->values()
             ->all();
+        $nodeManagedAreas = self::buildNodeManagedAreasMap();
 
         return [
             'gateways' => $gateways,
             'nodes' => $nodes,
             'node_details' => $nodeDetails,
             'gateway_nodes' => self::buildGatewayNodesMap($gateways),
+            'node_managed_areas' => $nodeManagedAreas,
         ];
     }
 
@@ -125,6 +128,40 @@ class NodeQueryBuilder
 
         foreach ($map as $gatewayExternalId => $nodeExternalIds) {
             $map[$gatewayExternalId] = array_values(array_unique($nodeExternalIds));
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, array<int, array{id: int, name: string|null, geom_type: string|null, geometry: mixed, bbox: mixed}>>
+     */
+    private static function buildNodeManagedAreasMap(): array
+    {
+        $map = [];
+
+        $nodes = Node::query()
+            ->with(['managedAreas:id,name,geom_type,geometry,bbox'])
+            ->get(['id', 'external_id']);
+
+        foreach ($nodes as $node) {
+            $nodeExternalId = (string) ($node->external_id ?? '');
+            if ($nodeExternalId === '') {
+                continue;
+            }
+
+            $managedAreas = $node->managedAreas
+                ->map(fn ($area) => [
+                    'id' => (int) $area->id,
+                    'name' => $area->name,
+                    'geom_type' => $area->geom_type,
+                    'geometry' => $area->geometry,
+                    'bbox' => $area->bbox,
+                ])
+                ->values()
+                ->all();
+
+            $map[$nodeExternalId] = $managedAreas;
         }
 
         return $map;

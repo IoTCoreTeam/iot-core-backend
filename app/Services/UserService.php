@@ -2,19 +2,14 @@
 
 namespace App\Services;
 
-use App\Helpers\ApiResponse;
 use App\Http\Requests\UpdateuserRequest;
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 
 class UserService
 {
-    public function findUserOrError(int|string $id): User|JsonResponse
+    public function findUserOrError(int|string $id): User
     {
-        $user = User::find($id);
-        if (! $user) {return ApiResponse::error('User not found', 404);}
-
-        return $user;
+        return User::findOrFail($id);
     }
 
     public function updateUserFromRequest(UpdateuserRequest $request, User $user): User

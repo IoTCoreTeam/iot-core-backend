@@ -10,7 +10,6 @@ use App\Http\Requests\RegisterUserRequest;
 use App\Services\AuthService;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -23,99 +22,69 @@ class AuthController extends Controller
 
     public function register(RegisterUserRequest $request)
     {
-        try {
-            $this->authService->register($request->validated());
+        $this->authService->register($request->validated());
 
-            return ApiResponse::success(null, ['message' => 'Registered successfully'], 201);
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to register user', 500, $e->getMessage());
-        }
+        return ApiResponse::success(null, ['message' => 'Registered successfully'], 201);
     }
 
     public function login(LoginUserRequest $request)
     {
-        try {
-            $result = $this->authService->login($request->validated());
+        $result = $this->authService->login($request->validated());
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Login successful',
-                'data' => [
-                    'user' => $result['user'],
-                    'access_token' => $result['access_token'],
-                    'token_type' => $result['token_type'],
-                    'expires_at' => optional($result['access_token_expires_at'])->toISOString(),
-                ],
-            ], 200)->withCookie(
-                $this->makeRefreshCookie($result['refresh_token'], $result['refresh_token_expires_at'])
-            );
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to login user', 500, $e->getMessage());
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Login successful',
+            'data' => [
+                'user' => $result['user'],
+                'access_token' => $result['access_token'],
+                'token_type' => $result['token_type'],
+                'expires_at' => optional($result['access_token_expires_at'])->toISOString(),
+            ],
+        ], 200)->withCookie(
+            $this->makeRefreshCookie($result['refresh_token'], $result['refresh_token_expires_at'])
+        );
     }
 
     public function user()
     {
-        try {
-            $user = $this->authService->getAuthenticatedUser();
+        $user = $this->authService->getAuthenticatedUser();
 
-            return ApiResponse::success($user);
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to fetch user data', 500, $e->getMessage());
-        }
+        return ApiResponse::success($user);
     }
 
     public function refreshToken(Request $request)
     {
-        try {
-            $refreshToken = $request->cookie($this->refreshCookieName());
-            $result = $this->authService->refreshAccessToken($refreshToken);
+        $refreshToken = $request->cookie($this->refreshCookieName());
+        $result = $this->authService->refreshAccessToken($refreshToken);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Token refreshed successfully',
-                'data' => [
-                    'user' => $result['user'],
-                    'access_token' => $result['access_token'],
-                    'token_type' => $result['token_type'],
-                    'expires_at' => optional($result['access_token_expires_at'])->toISOString(),
-                ],
-            ])->withCookie(
-                $this->makeRefreshCookie($result['refresh_token'], $result['refresh_token_expires_at'])
-            );
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to refresh token', 500, $e->getMessage());
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Token refreshed successfully',
+            'data' => [
+                'user' => $result['user'],
+                'access_token' => $result['access_token'],
+                'token_type' => $result['token_type'],
+                'expires_at' => optional($result['access_token_expires_at'])->toISOString(),
+            ],
+        ])->withCookie(
+            $this->makeRefreshCookie($result['refresh_token'], $result['refresh_token_expires_at'])
+        );
     }
 
     public function logout(Request $request)
     {
-        try {
-            $refreshToken = $request->cookie($this->refreshCookieName());
-            $this->authService->logout($request->user(), $refreshToken);
+        $refreshToken = $request->cookie($this->refreshCookieName());
+        $this->authService->logout($request->user(), $refreshToken);
 
-            return ApiResponse::success(null, 'Logged out successfully')
-                ->withCookie($this->forgetRefreshCookie());
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to logout', 500, $e->getMessage());
-        }
+        return ApiResponse::success(null, 'Logged out successfully')
+            ->withCookie($this->forgetRefreshCookie());
     }
 
     public function changePassword(ChangePasswordRequest $request)
     {
-        try {
-            $this->authService->changePassword($request->user(), $request->validated());
+        $this->authService->changePassword($request->user(), $request->validated());
 
-            return ApiResponse::success(null, 'Password changed successfully');
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            return ApiResponse::error('Failed to change password', 500, $e->getMessage());
-        }
+        return ApiResponse::success(null, 'Password changed successfully');
     }
 
     protected function makeRefreshCookie(string $token, CarbonInterface $expiresAt)
