@@ -21,16 +21,14 @@ class ControlUrlController extends Controller
 
     public function store(StoreControlUrlRequest $request)
     {
-        $payload = $request->validated();
-        $result = $this->controlUrlService->create($payload);
+        $result = $this->controlUrlService->create($request->validated());
 
         return ApiResponse::success($result['control_url'], $result['message'], $result['status']);
     }
 
     public function update(UpdateControlUrlRequest $request, string $id)
     {
-        $payload = $request->validated();
-        $result = $this->controlUrlService->update($id, $payload);
+        $result = $this->controlUrlService->update($id, $request->validated());
 
         return ApiResponse::success($result['control_url'], $result['message']);
     }

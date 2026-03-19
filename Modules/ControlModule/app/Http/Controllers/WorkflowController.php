@@ -91,20 +91,15 @@ class WorkflowController extends Controller
     {
         $result = $this->workflowRunService->run($workflow);
         $actor = $request->user();
+
         if ($actor) {
-            $this->notificationService->notifyWorkflowAction(
-                $actor,
-                $workflow,
+            $this->notificationService->notifyWorkflowAction($actor, $workflow,
                 'workflow.run',
                 ['workflow_id' => $workflow->id]
             );
         }
 
-        SystemLogHelper::log(
-            'workflow.run.success',
-            'Workflow executed successfully',
-            ['workflow_id' => $workflow->id]
-        );
+        SystemLogHelper::log('workflow.run.success', 'Workflow executed successfully',['workflow_id' => $workflow->id]);
 
         return ApiResponse::success($result, 'Workflow executed successfully');
     }
