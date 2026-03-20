@@ -27,6 +27,7 @@ Route::middleware(['auth:api'])->group(function () {
 Route::middleware(['auth:api', 'admin_or_engineer'])->group(function () {
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/count-by-role', [UserController::class, 'countByRole']);
     Route::post('/users/filter', [UserController::class, 'filter']);
     Route::put('/users/{id}', [UserController::class, 'update']);
 

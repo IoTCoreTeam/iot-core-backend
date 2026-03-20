@@ -63,4 +63,12 @@ class UserController extends Controller
 
         return response()->json($users);
     }
+
+    public function countByRole()
+    {
+        return ApiResponse::success(
+            UserQueryBuilder::countByRole(),
+            'User role counts fetched successfully'
+        );
+    }
 }

@@ -22,6 +22,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->redirectGuestsTo(function (Request $request) {
+            if ($request->is('api/*')) {
+                return null;
+            }
+
+            return '/login';
+        });
+
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
             'engineer' => EnsureUserIsEngineer::class,
@@ -30,7 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (\Throwable $e, Request $request) {
-            if (! $request->expectsJson()) {
+            if (! ($request->expectsJson() || $request->is('api/*'))) {
                 return null;
             }
 

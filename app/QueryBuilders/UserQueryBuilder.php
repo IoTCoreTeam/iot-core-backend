@@ -41,4 +41,27 @@ class UserQueryBuilder
                 ->orWhere('role', 'like', "%{$keyword}%");
         });
     }
+
+    public static function countByRole(): array
+    {
+        $knownRoles = ['admin', 'engineer', 'user'];
+
+        $rawCounts = User::query()
+            ->selectRaw('LOWER(role) as role_key, COUNT(*) as total')
+            ->groupByRaw('LOWER(role)')
+            ->pluck('total', 'role_key');
+
+        $roleCounts = collect($knownRoles)
+            ->mapWithKeys(fn ($role) => [$role => (int) ($rawCounts[$role] ?? 0)])
+            ->all();
+
+        $totalUsers = (int) $rawCounts->sum();
+        $knownRolesTotal = array_sum($roleCounts);
+
+        return [
+            'role_counts' => $roleCounts,
+            'other' => max(0, $totalUsers - $knownRolesTotal),
+            'total' => $totalUsers,
+        ];
+    }
 }

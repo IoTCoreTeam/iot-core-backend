@@ -2,8 +2,8 @@
 
 namespace App\QueryBuilders;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Notifications\DatabaseNotification;
 
 class NotificationQueryBuilder
@@ -30,7 +30,7 @@ class NotificationQueryBuilder
         ];
     }
 
-    public static function buildQuery(Request $request): Builder
+    public static function buildQuery(Request $request): MorphMany
     {
         return $request->user()
             ->notifications()
