@@ -327,7 +327,7 @@ class WorkflowRunService
                 } else {
                     $payload['state'] = 'off';
                 }
-                $this->controlUrlService->execute($controlUrlId, $payload);
+                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait($payload));
             } catch (\Throwable $e) {
                 $this->recordEvent('workflow_device_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -511,10 +511,10 @@ class WorkflowRunService
                     'node_id' => $node['id'] ?? null,
                     'value' => $value,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, [
+                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
                     'action_type' => $actionType,
                     'value' => $value,
-                ]);
+                ]));
             } catch (\Throwable $e) {
                 $this->recordEvent('action_on_failed', [
                     'control_url_id' => $controlUrlId,
@@ -536,11 +536,11 @@ class WorkflowRunService
                     'control_url_id' => $controlUrlId,
                     'node_id' => $node['id'] ?? null,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, [
+                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
                     // Ensure action_type is always present for IoT firmware routing.
                     'action_type' => $actionType,
                     'state' => $state,
-                ]);
+                ]));
             } catch (\Throwable $e) {
                 $this->recordEvent($state === 'on' ? 'action_on_failed' : 'action_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -557,11 +557,11 @@ class WorkflowRunService
                         'control_url_id' => $controlUrlId,
                         'node_id' => $node['id'] ?? null,
                     ]);
-                    $this->controlUrlService->execute($controlUrlId, [
+                    $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
                         // Ensure action_type is always present for IoT firmware routing.
                         'action_type' => $actionType,
                         'state' => 'off',
-                    ]);
+                    ]));
                 } catch (\Throwable $e) {
                     $this->recordEvent('action_off_failed', [
                         'control_url_id' => $controlUrlId,
@@ -579,11 +579,11 @@ class WorkflowRunService
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, [
+            $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
                 // Ensure action_type is always present for IoT firmware routing.
                 'action_type' => $actionType,
                 'state' => 'on',
-            ]);
+            ]));
         } catch (\Throwable $e) {
             $this->recordEvent('action_on_failed', [
                 'control_url_id' => $controlUrlId,
@@ -602,11 +602,11 @@ class WorkflowRunService
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, [
+            $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
                 // Ensure action_type is always present for IoT firmware routing.
                 'action_type' => $actionType,
                 'state' => 'off',
-            ]);
+            ]));
         } catch (\Throwable $e) {
             $this->recordEvent('action_off_failed', [
                 'control_url_id' => $controlUrlId,
@@ -640,6 +640,27 @@ class WorkflowRunService
             return 'digital';
         }
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withControlResponseWait(array $payload): array
+    {
+        $timeoutMs = (int) config('services.node_server.control_response_timeout_ms', 15000);
+        if ($timeoutMs < 1000) {
+            $timeoutMs = 1000;
+        }
+
+        if (! array_key_exists('wait_for_response', $payload)) {
+            $payload['wait_for_response'] = true;
+        }
+        if (! array_key_exists('response_timeout_ms', $payload)) {
+            $payload['response_timeout_ms'] = $timeoutMs;
+        }
+
+        return $payload;
     }
 
     /**
