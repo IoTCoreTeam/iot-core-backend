@@ -37,6 +37,7 @@ return [
 
     'node_server' => [
         'base_url' => env('NODE_SERVER_BASE_URL', 'http://localhost:8017'),
+        'service_token' => env('NODE_SERVER_SERVICE_TOKEN'),
         'control_response_timeout_ms' => env('NODE_SERVER_CONTROL_RESPONSE_TIMEOUT_MS', 15000),
     ],
 

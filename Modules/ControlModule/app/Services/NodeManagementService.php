@@ -22,7 +22,7 @@ class NodeManagementService
         ]);
 
         /** @var \Illuminate\Http\Client\Response $response */
-        $response = Http::post($endpoint, $payload);
+        $response = Http::withHeaders($this->serviceAuthHeaders())->post($endpoint, $payload);
 
         if ($response->failed()) {
             return ApiResponse::error(
@@ -44,5 +44,21 @@ class NodeManagementService
     {
         $baseUrl = rtrim((string) config('services.node_server.base_url'), '/');
         return "{$baseUrl}/v1/whitelist";
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function serviceAuthHeaders(): array
+    {
+        $serviceToken = trim((string) config('services.node_server.service_token', ''));
+        if ($serviceToken === '') {
+            return [];
+        }
+
+        return [
+            'Authorization' => 'Bearer ' . $serviceToken,
+            'X-Service-Token' => $serviceToken,
+        ];
     }
 }

@@ -38,7 +38,9 @@ class ControlCommandExecutionService
             'payload' => $commandPayload,
         ]);
 
-        $response = Http::timeout($timeoutSeconds)->post($endpoint, $commandPayload);
+        $response = Http::withHeaders($this->serviceAuthHeaders())
+            ->timeout($timeoutSeconds)
+            ->post($endpoint, $commandPayload);
 
         if ($response->failed()) {
             $failedResponsePayload = $response->json() ?? $response->body();
@@ -119,11 +121,17 @@ class ControlCommandExecutionService
         }
 
         $commandPayload['requested_at'] = $commandPayload['requested_at'] ?? now()->toISOString();
+        $commandPayload['requested_at_ms'] = $commandPayload['requested_at_ms'] ?? now()->getTimestampMs();
         if (! array_key_exists('wait_for_response', $commandPayload)) {
             $commandPayload['wait_for_response'] = true;
         }
         if (! array_key_exists('response_timeout_ms', $commandPayload)) {
             $commandPayload['response_timeout_ms'] = (int) config('services.node_server.control_response_timeout_ms', 15000);
+        }
+        if (! array_key_exists('response_deadline_at', $commandPayload)) {
+            $commandPayload['response_deadline_at'] = now()
+                ->addMilliseconds((int) $commandPayload['response_timeout_ms'])
+                ->toISOString();
         }
 
         return $commandPayload;
@@ -193,5 +201,21 @@ class ControlCommandExecutionService
 
             throw new \RuntimeException($message);
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function serviceAuthHeaders(): array
+    {
+        $serviceToken = trim((string) config('services.node_server.service_token', ''));
+        if ($serviceToken === '') {
+            return [];
+        }
+
+        return [
+            'Authorization' => 'Bearer ' . $serviceToken,
+            'X-Service-Token' => $serviceToken,
+        ];
     }
 }

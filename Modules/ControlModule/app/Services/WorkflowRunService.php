@@ -168,7 +168,9 @@ class WorkflowRunService
     private function fetchDeviceStatus(): array
     {
         $baseUrl = rtrim((string) config('services.node_server.base_url'), '/');
-        $response = Http::timeout(10)->get($baseUrl . '/v1/device-status');
+        $response = Http::withHeaders($this->serviceAuthHeaders())
+            ->timeout(10)
+            ->get($baseUrl . '/v1/device-status');
 
         if ($response->failed()) {
             throw new \RuntimeException('Failed to fetch device status.');
@@ -714,7 +716,9 @@ class WorkflowRunService
             'page' => 1,
         ]);
 
-        $response = Http::timeout(10)->get($baseUrl . '/v1/sensors/query?' . $query);
+        $response = Http::withHeaders($this->serviceAuthHeaders())
+            ->timeout(10)
+            ->get($baseUrl . '/v1/sensors/query?' . $query);
         if ($response->failed()) {
             return null;
         }
@@ -855,5 +859,21 @@ class WorkflowRunService
         if ($this->eventCallback) {
             ($this->eventCallback)($event);
         }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function serviceAuthHeaders(): array
+    {
+        $serviceToken = trim((string) config('services.node_server.service_token', ''));
+        if ($serviceToken === '') {
+            return [];
+        }
+
+        return [
+            'Authorization' => 'Bearer ' . $serviceToken,
+            'X-Service-Token' => $serviceToken,
+        ];
     }
 }

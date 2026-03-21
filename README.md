@@ -72,7 +72,25 @@ sequenceDiagram
    cp .env.example .env
    php artisan key:generate
    ```
-   *Configure your database connection details in the newly created `.env` file.*
+   *Configure your database connection details and service token settings in the newly created `.env` file.*
+
+### Backend -> Server Service Token
+
+The backend calls the Node server as an internal microservice and now authenticates with a shared service token.
+
+Set these variables in `backend/.env`:
+
+```env
+NODE_SERVER_BASE_URL=http://localhost:8017
+NODE_SERVER_SERVICE_TOKEN=replace-with-strong-shared-token
+```
+
+The same token must be configured on server side as `SERVICE_TOKEN` in `server/.env`.
+
+Current backend services that send this token:
+1. `ControlCommandExecutionService` (`/v1/control/*`)
+2. `WorkflowRunService` (`/v1/device-status`, `/v1/sensors/query`)
+3. `NodeManagementService` (`/v1/whitelist`)
 
 3. **Database Initialization**
    ```bash
