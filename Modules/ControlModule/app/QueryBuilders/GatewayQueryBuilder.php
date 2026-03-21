@@ -19,6 +19,13 @@ class GatewayQueryBuilder
     public static function buildQuery(Request $request): Builder
     {
         $query = Gateway::query();
+        $includes = self::parseIncludes($request);
+
+        if ($includes->contains('trashed')) {
+            $query->onlyTrashed();
+        } elseif ($includes->contains('all')) {
+            $query->withTrashed();
+        }
 
         if ($request->has('external_id')) {
             return $query->where('external_id', $request->query('external_id'));
@@ -43,6 +50,15 @@ class GatewayQueryBuilder
         }
 
         return $query;
+    }
+
+    private static function parseIncludes(Request $request)
+    {
+        return collect(explode(',', (string) $request->query('include', '')))
+            ->map(fn ($include) => strtolower(trim((string) $include)))
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     private static function applySearch(Builder $query, string $keyword): Builder

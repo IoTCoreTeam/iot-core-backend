@@ -20,6 +20,13 @@ class NodeQueryBuilder
     public static function buildQuery(Request $request): Builder
     {
         $query = Node::query();
+        $includes = self::parseIncludes($request);
+
+        if ($includes->contains('trashed')) {
+            $query->onlyTrashed();
+        } elseif ($includes->contains('all')) {
+            $query->withTrashed();
+        }
 
         $query = self::applyNodeFilters($query, $request);
 
@@ -33,6 +40,15 @@ class NodeQueryBuilder
         $query->with('managedAreas:id,name');
 
         return $query;
+    }
+
+    private static function parseIncludes(Request $request)
+    {
+        return collect(explode(',', (string) $request->query('include', '')))
+            ->map(fn ($include) => strtolower(trim((string) $include)))
+            ->filter()
+            ->unique()
+            ->values();
     }
 
     /**

@@ -30,13 +30,28 @@ class NodeService
             $payload['type'] = $input['type'];
         }
 
-        $node = Node::where('external_id', $payload['external_id'])->first();
+        $node = null;
+        if (! empty($payload['mac_address'])) {
+            $node = Node::withTrashed()
+                ->where('mac_address', $payload['mac_address'])
+                ->first();
+        }
+
+        if (! $node) {
+            $node = Node::withTrashed()
+                ->where('external_id', $payload['external_id'])
+                ->first();
+        }
+
         $created = false;
 
         if (! $node) {
             $node = Node::create($payload);
             $created = true;
         } else {
+            if ($node->trashed()) {
+                $node->restore();
+            }
             $node->update($payload);
         }
 
@@ -48,7 +63,7 @@ class NodeService
 
         return [
             'node' => $node->refresh(),
-            'message' => $created ? 'Node registered successfully' : 'Node registration refreshed successfully',
+            'message' => $created ? 'Node registered successfully' : 'Node registration reactivated successfully',
             'status' => $created ? 201 : 200,
         ];
     }
@@ -62,11 +77,11 @@ class NodeService
 
         $node->delete();
 
-        SystemLogHelper::log('node.deactivated', 'Node deleted successfully', ['node_id' => $node->id]);
+        SystemLogHelper::log('node.deactivated', 'Node deactivated successfully', ['node_id' => $node->id]);
 
         return [
             'node' => $node,
-            'message' => 'Node deleted successfully',
+            'message' => 'Node deactivated successfully',
         ];
     }
 }

@@ -19,11 +19,28 @@ class GatewayService
      */
     public function register($payload): array
     {
-        $gateway = Gateway::where('external_id', $payload['external_id'])->first();
+        $gateway = null;
+        if (! empty($payload['mac_address'])) {
+            $gateway = Gateway::withTrashed()
+                ->where('mac_address', $payload['mac_address'])
+                ->first();
+        }
+
+        if (! $gateway) {
+            $gateway = Gateway::withTrashed()
+                ->where('external_id', $payload['external_id'])
+                ->first();
+        }
+
         $created = false;
         if (!$gateway) {
             $gateway = Gateway::create($payload);
             $created = true;
+        } else {
+            if ($gateway->trashed()) {
+                $gateway->restore();
+            }
+            $gateway->update($payload);
         }
 
         SystemLogHelper::log(
@@ -34,7 +51,7 @@ class GatewayService
 
         return [
             'gateway' => $gateway->refresh(),
-            'message' => $created ? 'Gateway registered successfully' : 'Gateway registration refreshed successfully',
+            'message' => $created ? 'Gateway registered successfully' : 'Gateway registration reactivated successfully',
             'status' => $created ? 201 : 200,
         ];
     }
@@ -53,11 +70,11 @@ class GatewayService
             $gateway->delete();
         });
 
-        SystemLogHelper::log('gateway.deactivated', 'Gateway deleted successfully', ['gateway_id' => $gateway->id]);
+        SystemLogHelper::log('gateway.deactivated', 'Gateway deactivated successfully', ['gateway_id' => $gateway->id]);
 
         return [
             'gateway' => $gateway,
-            'message' => 'Gateway deleted successfully',
+            'message' => 'Gateway deactivated successfully',
         ];
     }
 

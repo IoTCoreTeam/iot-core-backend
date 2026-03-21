@@ -22,6 +22,7 @@ return new class extends Migration
             $table->enum('type', ['controller', 'sensor', 'node'])->default('node');
 
             $table->timestamps();
+            $table->softDeletes();
 
         });
     }
