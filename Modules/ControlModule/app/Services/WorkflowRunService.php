@@ -6,11 +6,9 @@ use App\Helpers\SystemLogHelper;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
 use Modules\ControlModule\Jobs\ExecuteWorkflowOffCommandJob;
 use Modules\ControlModule\Models\ControlUrl;
 use Modules\ControlModule\Models\Workflow;
-use Modules\ControlModule\Services\ControlUrlService;
 
 class WorkflowRunService
 {
@@ -28,7 +26,9 @@ class WorkflowRunService
     public function __construct(
         ControlUrlService $controlUrlService,
         private readonly NotificationService $notificationService,
-        private readonly WorkflowRunStateStore $workflowRunStateStore
+        private readonly WorkflowRunStateStore $workflowRunStateStore,
+        private readonly WorkflowRunDataHelper $workflowRunDataHelper,
+        private readonly WorkflowRunHttpHelper $workflowRunHttpHelper
     ) {
         $this->controlUrlService = $controlUrlService;
     }
@@ -61,7 +61,7 @@ class WorkflowRunService
         $nodes = $definition['nodes'] ?? [];
         $edges = $definition['edges'] ?? [];
 
-        $deviceStatus = $this->fetchDeviceStatus();
+        $deviceStatus = $this->workflowRunHttpHelper->fetchDeviceStatus();
         $this->recordEvent('device_status_fetched', [
             'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
         ]);
@@ -172,32 +172,6 @@ class WorkflowRunService
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    private function fetchDeviceStatus(): array
-    {
-        $baseUrl = rtrim((string) config('services.node_server.base_url'), '/');
-        $response = Http::withHeaders($this->serviceAuthHeaders())
-            ->timeout(10)
-            ->get($baseUrl . '/v1/device-status');
-
-        if ($response->failed()) {
-            throw new \RuntimeException('Failed to fetch device status.');
-        }
-
-        $payload = $response->json();
-        if (isset($payload['data']) && is_array($payload['data'])) {
-            return $payload['data'];
-        }
-
-        if (is_array($payload)) {
-            return $payload;
-        }
-
-        return [];
-    }
-
-    /**
      * @param array<int, mixed> $nodes
      * @param array<int, mixed> $deviceStatus
      */
@@ -214,7 +188,7 @@ class WorkflowRunService
         $this->recordEvent('devices_check_started', [
             'required_count' => count($requiredNodes),
         ]);
-        $onlineNodes = $this->indexOnlineNodes($deviceStatus);
+        $onlineNodes = $this->workflowRunDataHelper->indexOnlineNodes($deviceStatus);
 
         foreach ($requiredNodes as $key => $label) {
             if (! isset($onlineNodes[$key])) {
@@ -264,54 +238,11 @@ class WorkflowRunService
     }
 
     /**
-     * @param array<int, mixed> $deviceStatus
-     * @return array<string, bool>
-     */
-    private function indexOnlineNodes(array $deviceStatus): array
-    {
-        $online = [];
-        foreach ($deviceStatus as $gateway) {
-            if (! is_array($gateway)) {
-                continue;
-            }
-            $gatewayId = $gateway['id'] ?? $gateway['gateway_id'] ?? null;
-            if (! $gatewayId) {
-                continue;
-            }
-            $gatewayStatus = strtolower((string) ($gateway['status'] ?? ''));
-            if ($gatewayStatus !== 'online') {
-                continue;
-            }
-            $nodes = $gateway['nodes'] ?? [];
-            if (! is_array($nodes)) {
-                continue;
-            }
-            foreach ($nodes as $node) {
-                if (! is_array($node)) {
-                    continue;
-                }
-                $nodeId = $node['id'] ?? $node['node_id'] ?? null;
-                if (! $nodeId) {
-                    continue;
-                }
-                $nodeStatus = strtolower((string) ($node['status'] ?? ''));
-                if ($nodeStatus !== 'online') {
-                    continue;
-                }
-                $key = $gatewayId . '::' . $nodeId;
-                $online[$key] = true;
-            }
-        }
-
-        return $online;
-    }
-
-    /**
      * @param array<int, mixed> $nodes
      */
     private function ensureWorkflowDevicesOff(array $nodes): void
     {
-        $controlUrlIds = $this->collectActionControlUrls($nodes);
+        $controlUrlIds = $this->workflowRunDataHelper->collectActionControlUrls($nodes);
         if (empty($controlUrlIds)) {
             $this->recordEvent('workflow_devices_off_skipped', [
                 'reason' => 'no_action_nodes',
@@ -329,7 +260,7 @@ class WorkflowRunService
                     'control_url_id' => $controlUrlId,
                 ]);
                 $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
-                $normalizedType = $this->normalizeControlInputType($actionType);
+                $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
                 $payload = [
                     'action_type' => $actionType,
                 ];
@@ -338,7 +269,7 @@ class WorkflowRunService
                 } else {
                     $payload['state'] = 'off';
                 }
-                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait($payload));
+                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait($payload));
             } catch (\Throwable $e) {
                 $this->recordEvent('workflow_device_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -356,10 +287,10 @@ class WorkflowRunService
      */
     private function executeFlow(array $nodes, array $edges): array
     {
-        $nodeMap = $this->indexNodes($nodes);
-        $edgeMap = $this->indexEdges($edges);
-        $startId = $this->findNodeIdByType($nodes, 'start');
-        $endId = $this->findNodeIdByType($nodes, 'end');
+        $nodeMap = $this->workflowRunDataHelper->indexNodes($nodes);
+        $edgeMap = $this->workflowRunDataHelper->indexEdges($edges);
+        $startId = $this->workflowRunDataHelper->findNodeIdByType($nodes, 'start');
+        $endId = $this->workflowRunDataHelper->findNodeIdByType($nodes, 'end');
 
         if (! $startId || ! $endId) {
             throw new \RuntimeException('Workflow must contain start and end nodes.');
@@ -400,99 +331,21 @@ class WorkflowRunService
             ]);
             if ($type === 'action') {
                 $this->runActionNode($node);
-                $currentId = $this->resolveNextNodeId($currentId, $edgeMap, null);
+                $currentId = $this->workflowRunDataHelper->resolveNextNodeId($currentId, $edgeMap, null);
                 continue;
             }
 
             if ($type === 'condition') {
                 $result = $this->evaluateConditionNode($node);
                 $branch = $result ? 'true' : 'false';
-                $currentId = $this->resolveNextNodeId($currentId, $edgeMap, $branch);
+                $currentId = $this->workflowRunDataHelper->resolveNextNodeId($currentId, $edgeMap, $branch);
                 continue;
             }
 
-            $currentId = $this->resolveNextNodeId($currentId, $edgeMap, null);
+            $currentId = $this->workflowRunDataHelper->resolveNextNodeId($currentId, $edgeMap, null);
         }
 
         throw new \RuntimeException('Workflow ended unexpectedly.');
-    }
-
-    /**
-     * @param array<int, mixed> $nodes
-     * @return array<string, mixed>
-     */
-    private function indexNodes(array $nodes): array
-    {
-        $map = [];
-        foreach ($nodes as $node) {
-            if (! is_array($node)) {
-                continue;
-            }
-            $id = $node['id'] ?? null;
-            if (! $id) {
-                continue;
-            }
-            $map[$id] = $node;
-        }
-        return $map;
-    }
-
-    /**
-     * @param array<int, mixed> $edges
-     * @return array<string, array<int, array<string, mixed>>>
-     */
-    private function indexEdges(array $edges): array
-    {
-        $map = [];
-        foreach ($edges as $edge) {
-            if (! is_array($edge)) {
-                continue;
-            }
-            $source = $edge['source'] ?? null;
-            if (! $source) {
-                continue;
-            }
-            $map[$source][] = $edge;
-        }
-        return $map;
-    }
-
-    /**
-     * @param array<int, mixed> $nodes
-     */
-    private function findNodeIdByType(array $nodes, string $type): ?string
-    {
-        foreach ($nodes as $node) {
-            if (! is_array($node)) {
-                continue;
-            }
-            if (($node['type'] ?? null) === $type) {
-                return $node['id'] ?? null;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * @param array<string, array<int, array<string, mixed>>> $edgeMap
-     */
-    private function resolveNextNodeId(string $currentId, array $edgeMap, ?string $branch): ?string
-    {
-        $edges = $edgeMap[$currentId] ?? [];
-        if (empty($edges)) {
-            return null;
-        }
-        if (! $branch) {
-            $edge = $edges[0] ?? null;
-            return $edge['target'] ?? null;
-        }
-        foreach ($edges as $edge) {
-            $edgeBranch = $edge['branch'] ?? null;
-            if ($edgeBranch === $branch) {
-                return $edge['target'] ?? null;
-            }
-        }
-        return null;
     }
 
     /**
@@ -506,7 +359,7 @@ class WorkflowRunService
         }
         $duration = (int) ($node['duration_seconds'] ?? 0);
         $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
-        $normalizedType = $this->normalizeControlInputType($actionType);
+        $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
         $actionValue = $node['action_value'] ?? null;
 
         $this->assertActionDeviceOnline($node);
@@ -522,7 +375,7 @@ class WorkflowRunService
                     'node_id' => $node['id'] ?? null,
                     'value' => $value,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
+                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
                     'action_type' => $actionType,
                     'value' => $value,
                 ]));
@@ -547,7 +400,7 @@ class WorkflowRunService
                     'control_url_id' => $controlUrlId,
                     'node_id' => $node['id'] ?? null,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
+                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
                     // Ensure action_type is always present for IoT firmware routing.
                     'action_type' => $actionType,
                     'state' => $state,
@@ -572,7 +425,7 @@ class WorkflowRunService
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
+            $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
                 // Ensure action_type is always present for IoT firmware routing.
                 'action_type' => $actionType,
                 'state' => 'on',
@@ -596,7 +449,7 @@ class WorkflowRunService
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
+            $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
                 // Ensure action_type is always present for IoT firmware routing.
                 'action_type' => $actionType,
                 'state' => 'off',
@@ -657,42 +510,6 @@ class WorkflowRunService
         return $inputType !== '' ? $inputType : null;
     }
 
-    private function normalizeControlInputType(?string $inputType): ?string
-    {
-        $normalized = strtolower(trim((string) ($inputType ?? '')));
-        if ($normalized === '') {
-            return null;
-        }
-        if (str_contains($normalized, 'analog')) {
-            return 'analog';
-        }
-        if (str_contains($normalized, 'digital') || str_contains($normalized, 'relay')) {
-            return 'digital';
-        }
-        return $normalized;
-    }
-
-    /**
-     * @param array<string, mixed> $payload
-     * @return array<string, mixed>
-     */
-    private function withControlResponseWait(array $payload): array
-    {
-        $timeoutMs = (int) config('services.node_server.control_response_timeout_ms', 15000);
-        if ($timeoutMs < 1000) {
-            $timeoutMs = 1000;
-        }
-
-        if (! array_key_exists('wait_for_response', $payload)) {
-            $payload['wait_for_response'] = true;
-        }
-        if (! array_key_exists('response_timeout_ms', $payload)) {
-            $payload['response_timeout_ms'] = $timeoutMs;
-        }
-
-        return $payload;
-    }
-
     /**
      * @param array<string, mixed> $node
      */
@@ -705,7 +522,7 @@ class WorkflowRunService
             throw new \RuntimeException('Condition node missing metric data.');
         }
 
-        $latest = $this->fetchLatestMetricValue((string) $metricKey);
+        $latest = $this->workflowRunHttpHelper->fetchLatestMetricValue((string) $metricKey, $this->workflowRunDataHelper);
         if ($latest === null) {
             throw new \RuntimeException('Failed to evaluate condition.');
         }
@@ -734,48 +551,6 @@ class WorkflowRunService
         return $result;
     }
 
-    private function fetchLatestMetricValue(string $metricKey): ?float
-    {
-        $baseUrl = rtrim((string) config('services.node_server.base_url'), '/');
-        $mapped = $this->mapMetricKey($metricKey);
-        $query = http_build_query([
-            'sensor_type' => $mapped,
-            'limit' => 1,
-            'page' => 1,
-        ]);
-
-        $response = Http::withHeaders($this->serviceAuthHeaders())
-            ->timeout(10)
-            ->get($baseUrl . '/v1/sensors/query?' . $query);
-        if ($response->failed()) {
-            return null;
-        }
-
-        $payload = $response->json();
-        if (! is_array($payload) || empty($payload[0])) {
-            return null;
-        }
-
-        $row = $payload[0];
-        $value = $row['value'] ?? ($row['_id']['value'] ?? null);
-        if ($value === null) {
-            return null;
-        }
-
-        return is_numeric($value) ? (float) $value : null;
-    }
-
-    private function mapMetricKey(string $metricKey): string
-    {
-        return match ($metricKey) {
-            'soilMoisture' => 'soil',
-            'soil_moisture' => 'soil',
-            'airHumidity' => 'humidity',
-            'air_humidity' => 'humidity',
-            default => $metricKey,
-        };
-    }
-
     /**
      * @param array<int, mixed> $nodes
      */
@@ -790,30 +565,6 @@ class WorkflowRunService
             ], 'error');
             // ignore abort errors
         }
-    }
-
-    /**
-     * @param array<int, mixed> $nodes
-     * @return array<int, string>
-     */
-    private function collectActionControlUrls(array $nodes): array
-    {
-        $controlUrlIds = [];
-        foreach ($nodes as $node) {
-            if (! is_array($node)) {
-                continue;
-            }
-            if (($node['type'] ?? null) !== 'action') {
-                continue;
-            }
-            $controlUrlId = $node['control_url_id'] ?? null;
-            if (! $controlUrlId) {
-                continue;
-            }
-            $controlUrlIds[(string) $controlUrlId] = true;
-        }
-
-        return array_keys($controlUrlIds);
     }
 
     /**
@@ -854,8 +605,8 @@ class WorkflowRunService
             'device_id' => $nodeExternalId,
         ]);
 
-        $deviceStatus = $this->fetchDeviceStatus();
-        $onlineNodes = $this->indexOnlineNodes($deviceStatus);
+        $deviceStatus = $this->workflowRunHttpHelper->fetchDeviceStatus();
+        $onlineNodes = $this->workflowRunDataHelper->indexOnlineNodes($deviceStatus);
         $key = $gatewayExternalId . '::' . $nodeExternalId;
         if (! isset($onlineNodes[$key])) {
             $this->recordEvent('action_device_offline', [
@@ -889,19 +640,4 @@ class WorkflowRunService
         }
     }
 
-    /**
-     * @return array<string, string>
-     */
-    private function serviceAuthHeaders(): array
-    {
-        $serviceToken = trim((string) config('services.node_server.service_token', ''));
-        if ($serviceToken === '') {
-            return [];
-        }
-
-        return [
-            'Authorization' => 'Bearer ' . $serviceToken,
-            'X-Service-Token' => $serviceToken,
-        ];
-    }
 }
