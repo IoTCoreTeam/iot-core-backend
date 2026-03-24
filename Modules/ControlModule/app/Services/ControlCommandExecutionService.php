@@ -120,6 +120,17 @@ class ControlCommandExecutionService
             $commandPayload['node_id'] = $nodeExternalId;
         }
 
+        // Always prefer canonical external IDs from Control Module relations.
+    // This prevents clients from accidentally sending internal UUIDs that
+        // break gateway topic routing and status-event waiter matching.
+        if (! empty($gatewayExternalId)) {
+            $commandPayload['gateway_id'] = $gatewayExternalId;
+        }
+
+        if (! empty($nodeExternalId)) {
+            $commandPayload['node_id'] = $nodeExternalId;
+        }
+
         $commandPayload['requested_at'] = $commandPayload['requested_at'] ?? now()->toISOString();
         $commandPayload['requested_at_ms'] = $commandPayload['requested_at_ms'] ?? now()->getTimestampMs();
         if (! array_key_exists('wait_for_response', $commandPayload)) {

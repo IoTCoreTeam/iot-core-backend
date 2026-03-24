@@ -78,17 +78,15 @@ class ControlUrlService
      */
     public function execute(string $id, array $payload): array
     {
-        return DB::transaction(function () use ($id, $payload) {
-            $controlUrl = ControlUrl::with('node.gateway')->findOrFail($id);
-            $execution = $this->controlCommandExecutionService->execute($controlUrl, $payload);
+        $controlUrl = ControlUrl::with('node.gateway')->findOrFail($id);
+        $execution = $this->controlCommandExecutionService->execute($controlUrl, $payload);
 
-            return [
-                'control_url' => $controlUrl->refresh(),
-                'message' => 'Control url executed successfully',
-                'status' => $execution['status'],
-                'response' => $execution['response'],
-            ];
-        });
+        return [
+            'control_url' => $controlUrl->refresh(),
+            'message' => 'Control url executed successfully',
+            'status' => $execution['status'],
+            'response' => $execution['response'],
+        ];
     }
 
     /**

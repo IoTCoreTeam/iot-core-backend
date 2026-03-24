@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Helpers\SystemLogHelper;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Modules\ControlModule\Jobs\RunWorkflowJob;
 use Modules\ControlModule\Helpers\ApiResponse;
 use Modules\ControlModule\Http\Requests\StoreWorkflowRequest;
 use Modules\ControlModule\Http\Requests\UpdateWorkflowRequest;
@@ -89,19 +90,22 @@ class WorkflowController extends Controller
      */
     public function run(Request $request, Workflow $workflow)
     {
-        $result = $this->workflowRunService->run($workflow);
         $actor = $request->user();
+        RunWorkflowJob::dispatch((string) $workflow->id, $actor?->id);
 
         if ($actor) {
             $this->notificationService->notifyWorkflowAction($actor, $workflow,
                 'workflow.run',
-                ['workflow_id' => $workflow->id]
+                ['workflow_id' => $workflow->id, 'queued' => true]
             );
         }
 
-        SystemLogHelper::log('workflow.run.success', 'Workflow executed successfully',['workflow_id' => $workflow->id]);
+        SystemLogHelper::log('workflow.run.queued', 'Workflow execution queued', ['workflow_id' => $workflow->id]);
 
-        return ApiResponse::success($result, 'Workflow executed successfully');
+        return ApiResponse::success([
+            'workflow_id' => $workflow->id,
+            'status' => 'queued',
+        ], 'Workflow queued successfully', 202);
     }
 
     public function stop(Workflow $workflow)
@@ -114,42 +118,8 @@ class WorkflowController extends Controller
     /**
      * Stream workflow execution events via SSE.
      */
-    public function runStream(Workflow $workflow)
+    public function runStream(Request $request, Workflow $workflow)
     {
-        return response()->stream(function () use ($workflow) {
-            $sendEvent = function (string $event, $data): void {
-                echo "event: {$event}\n";
-                echo 'data: ' . json_encode($data) . "\n\n";
-                if (function_exists('ob_flush')) {
-                    @ob_flush();
-                }
-                if (function_exists('flush')) {
-                    @flush();
-                }
-            };
-
-            $sendEvent('ready', ['connected' => true]);
-
-            $this->workflowRunService->setEventCallback(function (array $event) use ($sendEvent) {
-                $sendEvent('workflow-event', $event);
-            });
-
-            try {
-                $result = $this->workflowRunService->run($workflow);
-                $sendEvent('workflow-complete', $result);
-            } catch (\Throwable $e) {
-                $sendEvent('workflow-error', [
-                    'message' => $e->getMessage(),
-                    'events' => $this->workflowRunService->getEvents(),
-                ]);
-            } finally {
-                $this->workflowRunService->setEventCallback(null);
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
+        return ApiResponse::error('Workflow status stream is temporarily disabled.', 410);
     }
 }

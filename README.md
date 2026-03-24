@@ -111,15 +111,66 @@ Current backend services that send this token:
 
 ### 3. Running the Application
 
-- **Development Server:**
-  ```bash
-  php artisan serve
-  ```
-
-- **Full Stack Concurrency (Server, Queue, Vite):**
+- **Option A (recommended): run all required dev processes**
   ```bash
   composer dev
   ```
+  This starts Laravel server, queue worker, logs, and Vite together.
+  On Windows, use:
+  ```bash
+  composer dev:win
+  ```
+  (`php artisan pail` requires `pcntl`, which is not available on Windows.)
+
+- **Option B: run manually in separate terminals**
+  Terminal 1:
+  ```bash
+  php artisan serve
+  ```
+  Terminal 2:
+  ```bash
+  php artisan queue:work
+  ```
+  Terminal 3 (if frontend assets are needed):
+  ```bash
+  npm run dev
+  ```
+
+### 4. Workflow Execution Queue (Control Module)
+
+Workflow execution is now handled asynchronously to avoid blocking HTTP workers.
+
+#### Request flow
+1. Client calls `POST /api/v1/workflows/{workflow}/run`.
+2. `WorkflowController::run()` creates a `run_id`, dispatches `RunWorkflowJob` to the queue, and returns `202 Accepted` with:
+   ```json
+   {
+     "run_id": "<run-id>",
+     "workflow_id": "<id>",
+     "status": "queued"
+   }
+   ```
+3. Client polls run events: `GET /api/v1/workflows/runs/{run_id}/events?offset=<n>`.
+4. Queue worker picks up `RunWorkflowJob`.
+5. Job resolves workflow + actor and calls `WorkflowRunService::run($workflow, $actor)`.
+6. Service executes workflow steps (`action`, `condition`), sends control commands, records logs/events, and emits notifications (`workflow.run.completed` or `workflow.run.failed`).
+
+#### Why queue is required
+- Workflow actions may include wait durations (for example `duration_seconds = 10`) and control-response waits.
+- Running this in a queue prevents long waits from occupying web request workers.
+
+#### Required worker process
+At least one queue worker must be running (either started by `composer dev` or manually):
+
+```bash
+php artisan queue:work
+```
+
+If no worker is running, run requests will stay in `queued` state and not execute.
+
+#### Current behavior note
+- `run` endpoint (`POST /run`) is queued (async).
+- `run/stream` now delegates to the same queued run-start behavior and no longer executes workflow in-request.
 
 ---
 

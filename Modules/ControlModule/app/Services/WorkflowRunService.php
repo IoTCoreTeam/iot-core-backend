@@ -3,9 +3,11 @@
 namespace Modules\ControlModule\Services;
 
 use App\Helpers\SystemLogHelper;
+use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Modules\ControlModule\Jobs\ExecuteWorkflowOffCommandJob;
 use Modules\ControlModule\Models\ControlUrl;
 use Modules\ControlModule\Models\Workflow;
 use Modules\ControlModule\Services\ControlUrlService;
@@ -13,6 +15,7 @@ use Modules\ControlModule\Services\ControlUrlService;
 class WorkflowRunService
 {
     private ControlUrlService $controlUrlService;
+    private ?string $currentRunId = null;
     /**
      * @var array<int, array<string, mixed>>
      */
@@ -24,9 +27,15 @@ class WorkflowRunService
 
     public function __construct(
         ControlUrlService $controlUrlService,
-        private readonly NotificationService $notificationService
+        private readonly NotificationService $notificationService,
+        private readonly WorkflowRunStateStore $workflowRunStateStore
     ) {
         $this->controlUrlService = $controlUrlService;
+    }
+
+    public function setRunId(?string $runId): void
+    {
+        $this->currentRunId = $runId;
     }
 
     public function setEventCallback(?callable $callback): void
@@ -37,7 +46,7 @@ class WorkflowRunService
     /**
      * @return array<string, mixed>
      */
-    public function run(Workflow $workflow): array
+    public function run(Workflow $workflow, ?User $actor = null): array
     {
         $this->events = [];
         $this->recordEvent('workflow_start', [
@@ -70,7 +79,7 @@ class WorkflowRunService
                 'Workflow run completed',
                 ['workflow_id' => $workflow->id]
             );
-            $actor = Auth::user();
+            $actor = $actor ?? Auth::user();
             if ($actor) {
                 $this->notificationService->notifyWorkflowAction(
                     $actor,
@@ -96,7 +105,7 @@ class WorkflowRunService
                 ['workflow_id' => $workflow->id, 'error' => $e->getMessage()],
                 ['level' => 'error']
             );
-            $actor = Auth::user();
+            $actor = $actor ?? Auth::user();
             if ($actor) {
                 $this->notificationService->notifyWorkflowAction(
                     $actor,
@@ -553,25 +562,7 @@ class WorkflowRunService
             }
 
             if ($state === 'on' && $duration > 0) {
-                sleep($duration);
-                try {
-                    $this->recordEvent('action_off', [
-                        'control_url_id' => $controlUrlId,
-                        'node_id' => $node['id'] ?? null,
-                    ]);
-                    $this->controlUrlService->execute($controlUrlId, $this->withControlResponseWait([
-                        // Ensure action_type is always present for IoT firmware routing.
-                        'action_type' => $actionType,
-                        'state' => 'off',
-                    ]));
-                } catch (\Throwable $e) {
-                    $this->recordEvent('action_off_failed', [
-                        'control_url_id' => $controlUrlId,
-                        'node_id' => $node['id'] ?? null,
-                        'error' => $e->getMessage(),
-                    ], 'error');
-                    throw $e;
-                }
+                $this->dispatchDelayedOffCommand($controlUrlId, $actionType, $normalizedType, $duration, $node);
             }
             return;
         }
@@ -596,7 +587,8 @@ class WorkflowRunService
         }
 
         if ($duration > 0) {
-            sleep($duration);
+            $this->dispatchDelayedOffCommand($controlUrlId, $actionType, $normalizedType, $duration, $node);
+            return;
         }
 
         try {
@@ -617,6 +609,42 @@ class WorkflowRunService
             ], 'error');
             throw $e;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     */
+    private function dispatchDelayedOffCommand(
+        string $controlUrlId,
+        string $actionType,
+        ?string $normalizedType,
+        int $duration,
+        array $node
+    ): void {
+        $kind = $normalizedType === 'analog' ? 'analog' : 'digital';
+
+        $this->recordEvent('action_off_scheduled', [
+            'control_url_id' => $controlUrlId,
+            'node_id' => $node['id'] ?? null,
+            'delay_seconds' => $duration,
+            'input_type' => $kind,
+        ]);
+
+        if ($this->currentRunId) {
+            $this->workflowRunStateStore->incrementPendingOffJobs($this->currentRunId, [
+                'control_url_id' => $controlUrlId,
+                'node_id' => $node['id'] ?? null,
+                'delay_seconds' => $duration,
+                'input_type' => $kind,
+            ]);
+        }
+
+        ExecuteWorkflowOffCommandJob::dispatch(
+            $controlUrlId,
+            $actionType,
+            $kind,
+            $this->currentRunId
+        )->delay(now()->addSeconds(max(0, $duration)));
     }
 
     private function resolveControlUrlInputType(string $controlUrlId): ?string
