@@ -93,6 +93,7 @@ class WorkflowController extends Controller
     public function run(Request $request, Workflow $workflow)
     {
         $actor = $request->user();
+        $turnOffDevicesBeforeRun = $request->boolean('turn_off_devices_before_run', true);
         try {
             $run = $this->workflowRunStateStore->createRun((string) $workflow->id, $actor?->id);
         } catch (\RuntimeException $e) {
@@ -100,7 +101,12 @@ class WorkflowController extends Controller
         }
 
         $runId = (string) ($run['run_id'] ?? '');
-        RunWorkflowJob::dispatch((string) $workflow->id, $actor?->id, $runId !== '' ? $runId : null);
+        RunWorkflowJob::dispatch(
+            (string) $workflow->id,
+            $actor?->id,
+            $runId !== '' ? $runId : null,
+            $turnOffDevicesBeforeRun
+        );
 
         if ($actor) {
             $this->notificationService->notifyWorkflowAction($actor, $workflow,

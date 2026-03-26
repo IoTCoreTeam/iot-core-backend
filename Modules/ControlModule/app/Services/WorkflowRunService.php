@@ -47,7 +47,7 @@ class WorkflowRunService
     /**
      * @return array<string, mixed>
      */
-    public function run(Workflow $workflow, ?User $actor = null): array
+    public function run(Workflow $workflow, ?User $actor = null, bool $turnOffDevicesBeforeRun = true): array
     {
             $this->events = [];
         $this->currentWorkflowId = (string) $workflow->id;
@@ -68,8 +68,14 @@ class WorkflowRunService
             'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
         ]);
         $this->assertDevicesOnline($nodes, $deviceStatus);
-        $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
-        $this->recordEvent('workflow_devices_ensured_off');
+        if ($turnOffDevicesBeforeRun) {
+            $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
+            $this->recordEvent('workflow_devices_ensured_off');
+        } else {
+            $this->recordEvent('workflow_devices_ensure_off_skipped', [
+                'reason' => 'disabled_by_user',
+            ]);
+        }
 
         try {
             $result = $this->executeFlow($nodes, $edges);
