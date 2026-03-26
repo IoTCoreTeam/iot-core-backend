@@ -13,6 +13,7 @@ class WorkflowRunService
 {
     private ControlUrlService $controlUrlService;
     private ?string $currentRunId = null;
+    private ?string $currentWorkflowId = null;
     /**
      * @var array<int, array<string, mixed>>
      */
@@ -27,7 +28,8 @@ class WorkflowRunService
         private readonly NotificationService $notificationService,
         private readonly WorkflowRunStateStore $workflowRunStateStore,
         private readonly WorkflowRunDataHelper $workflowRunDataHelper,
-        private readonly WorkflowRunHttpHelper $workflowRunHttpHelper
+        private readonly WorkflowRunHttpHelper $workflowRunHttpHelper,
+        private readonly WorkflowStatusEventService $workflowStatusEventService
     ) {
         $this->controlUrlService = $controlUrlService;
     }
@@ -47,7 +49,8 @@ class WorkflowRunService
      */
     public function run(Workflow $workflow, ?User $actor = null): array
     {
-        $this->events = [];
+            $this->events = [];
+        $this->currentWorkflowId = (string) $workflow->id;
         $this->recordEvent('workflow_start', [
             'workflow_id' => $workflow->id,
         ]);
@@ -65,7 +68,7 @@ class WorkflowRunService
             'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
         ]);
         $this->assertDevicesOnline($nodes, $deviceStatus);
-        $this->ensureWorkflowDevicesOff($nodes);
+        $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
         $this->recordEvent('workflow_devices_ensured_off');
 
         try {
@@ -113,8 +116,10 @@ class WorkflowRunService
                     ['workflow_id' => $workflow->id]
                 );
             }
-            $this->abortWorkflowDevices($nodes);
+            $this->abortWorkflowDevices($nodes, (string) $workflow->id);
             throw $e;
+        } finally {
+            $this->currentWorkflowId = null;
         }
     }
 
@@ -132,6 +137,7 @@ class WorkflowRunService
     public function stop(Workflow $workflow): array
     {
         $this->events = [];
+        $this->currentWorkflowId = (string) $workflow->id;
         $this->recordEvent('workflow_stop_requested', [
             'workflow_id' => $workflow->id,
         ]);
@@ -152,8 +158,11 @@ class WorkflowRunService
         $nodes = $definition['nodes'] ?? [];
 
         try {
-            $this->ensureWorkflowDevicesOff($nodes);
+            $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
             $this->recordEvent('workflow_stop_completed', [
+                'workflow_id' => $workflow->id,
+            ]);
+            $this->recordEvent('workflow_stopped', [
                 'workflow_id' => $workflow->id,
             ]);
             return [
@@ -167,6 +176,8 @@ class WorkflowRunService
                 'error' => $e->getMessage(),
             ], 'error');
             throw $e;
+        } finally {
+            $this->currentWorkflowId = null;
         }
     }
 
@@ -239,7 +250,7 @@ class WorkflowRunService
     /**
      * @param array<int, mixed> $nodes
      */
-    private function ensureWorkflowDevicesOff(array $nodes): void
+    private function ensureWorkflowDevicesOff(array $nodes, ?string $workflowId = null): void
     {
         $controlUrlIds = $this->workflowRunDataHelper->collectActionControlUrls($nodes);
         if (empty($controlUrlIds)) {
@@ -268,7 +279,12 @@ class WorkflowRunService
                 } else {
                     $payload['state'] = 'off';
                 }
-                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait($payload));
+                $this->controlUrlService->execute(
+                    $controlUrlId,
+                    $this->workflowRunHttpHelper->withControlResponseWait(
+                        $this->withWorkflowCommandContext($payload, $workflowId)
+                    )
+                );
             } catch (\Throwable $e) {
                 $this->recordEvent('workflow_device_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -374,10 +390,15 @@ class WorkflowRunService
                     'node_id' => $node['id'] ?? null,
                     'value' => $value,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
-                    'action_type' => $actionType,
-                    'value' => $value,
-                ]));
+                $this->controlUrlService->execute(
+                    $controlUrlId,
+                    $this->workflowRunHttpHelper->withControlResponseWait(
+                        $this->withWorkflowCommandContext([
+                            'action_type' => $actionType,
+                            'value' => $value,
+                        ])
+                    )
+                );
             } catch (\Throwable $e) {
                 $this->recordEvent('action_on_failed', [
                     'control_url_id' => $controlUrlId,
@@ -399,11 +420,16 @@ class WorkflowRunService
                     'control_url_id' => $controlUrlId,
                     'node_id' => $node['id'] ?? null,
                 ]);
-                $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
-                    // Ensure action_type is always present for IoT firmware routing.
-                    'action_type' => $actionType,
-                    'state' => $state,
-                ]));
+                $this->controlUrlService->execute(
+                    $controlUrlId,
+                    $this->workflowRunHttpHelper->withControlResponseWait(
+                        $this->withWorkflowCommandContext([
+                            // Ensure action_type is always present for IoT firmware routing.
+                            'action_type' => $actionType,
+                            'state' => $state,
+                        ])
+                    )
+                );
             } catch (\Throwable $e) {
                 $this->recordEvent($state === 'on' ? 'action_on_failed' : 'action_off_failed', [
                     'control_url_id' => $controlUrlId,
@@ -425,11 +451,16 @@ class WorkflowRunService
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
-                // Ensure action_type is always present for IoT firmware routing.
-                'action_type' => $actionType,
-                'state' => 'on',
-            ]));
+            $this->controlUrlService->execute(
+                $controlUrlId,
+                $this->workflowRunHttpHelper->withControlResponseWait(
+                    $this->withWorkflowCommandContext([
+                        // Ensure action_type is always present for IoT firmware routing.
+                        'action_type' => $actionType,
+                        'state' => 'on',
+                    ])
+                )
+            );
         } catch (\Throwable $e) {
             $this->recordEvent('action_on_failed', [
                 'control_url_id' => $controlUrlId,
@@ -501,7 +532,9 @@ class WorkflowRunService
             ]);
             $this->controlUrlService->execute(
                 $controlUrlId,
-                $this->workflowRunHttpHelper->withControlResponseWait($payload)
+                $this->workflowRunHttpHelper->withControlResponseWait(
+                    $this->withWorkflowCommandContext($payload)
+                )
             );
         } catch (\Throwable $e) {
             $this->recordEvent('action_off_failed', [
@@ -567,10 +600,10 @@ class WorkflowRunService
     /**
      * @param array<int, mixed> $nodes
      */
-    private function abortWorkflowDevices(array $nodes): void
+    private function abortWorkflowDevices(array $nodes, ?string $workflowId = null): void
     {
         try {
-            $this->ensureWorkflowDevicesOff($nodes);
+            $this->ensureWorkflowDevicesOff($nodes, $workflowId);
             $this->recordEvent('workflow_devices_forced_off');
         } catch (\Throwable $e) {
             $this->recordEvent('workflow_devices_force_off_failed', [
@@ -638,6 +671,55 @@ class WorkflowRunService
     }
 
     /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withWorkflowCommandContext(array $payload, ?string $workflowId = null): array
+    {
+        $resolvedWorkflowId = $workflowId ?? $this->currentWorkflowId;
+        if ($resolvedWorkflowId) {
+            $payload['workflow_id'] = $resolvedWorkflowId;
+        }
+        if ($this->currentRunId) {
+            $payload['run_id'] = $this->currentRunId;
+        }
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $event
+     */
+    private function emitWorkflowStatusEvent(array $event): void
+    {
+        $type = (string) ($event['type'] ?? '');
+        $status = match ($type) {
+            'workflow_start' => 'workflow_started',
+            'workflow_completed' => 'workflow_completed',
+            'workflow_failed' => 'workflow_failed',
+            'workflow_stopped' => 'workflow_stopped',
+            default => null,
+        };
+
+        if (! $status) {
+            return;
+        }
+
+        $this->workflowStatusEventService->emit([
+            'type' => 'workflow_status',
+            'status' => $status,
+            'run_id' => $this->currentRunId,
+            'workflow_id' => $event['workflow_id'] ?? $this->currentWorkflowId,
+            'ts' => $event['timestamp'] ?? now()->toISOString(),
+            'source' => 'backend',
+            'error' => $event['error'] ?? null,
+            'meta' => [
+                'event_type' => $type,
+                'level' => $event['level'] ?? 'info',
+            ],
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $context
      */
     private function recordEvent(string $type, array $context = [], string $level = 'info'): void
@@ -648,6 +730,7 @@ class WorkflowRunService
             'level' => $level,
         ], $context);
         $this->events[] = $event;
+        $this->emitWorkflowStatusEvent($event);
         if ($this->eventCallback) {
             ($this->eventCallback)($event);
         }

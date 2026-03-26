@@ -12,6 +12,7 @@ use Modules\ControlModule\Http\Requests\StoreWorkflowRequest;
 use Modules\ControlModule\Http\Requests\UpdateWorkflowRequest;
 use Modules\ControlModule\Models\Workflow;
 use Modules\ControlModule\QueryBuilders\WorkflowQueryBuilder;
+use Modules\ControlModule\Services\WorkflowRunStateStore;
 use Modules\ControlModule\Services\WorkflowRunService;
 
 class WorkflowController extends Controller
@@ -19,7 +20,8 @@ class WorkflowController extends Controller
     public function __construct(
         private readonly WorkflowQueryBuilder $workflowQueryBuilder,
         private readonly WorkflowRunService $workflowRunService,
-        private readonly NotificationService $notificationService
+        private readonly NotificationService $notificationService,
+        private readonly WorkflowRunStateStore $workflowRunStateStore
     ) {}
 
     private function defaultDefinition(): array
@@ -91,7 +93,14 @@ class WorkflowController extends Controller
     public function run(Request $request, Workflow $workflow)
     {
         $actor = $request->user();
-        RunWorkflowJob::dispatch((string) $workflow->id, $actor?->id);
+        try {
+            $run = $this->workflowRunStateStore->createRun((string) $workflow->id, $actor?->id);
+        } catch (\RuntimeException $e) {
+            return ApiResponse::error($e->getMessage(), 409);
+        }
+
+        $runId = (string) ($run['run_id'] ?? '');
+        RunWorkflowJob::dispatch((string) $workflow->id, $actor?->id, $runId !== '' ? $runId : null);
 
         if ($actor) {
             $this->notificationService->notifyWorkflowAction($actor, $workflow,
@@ -104,6 +113,7 @@ class WorkflowController extends Controller
 
         return ApiResponse::success([
             'workflow_id' => $workflow->id,
+            'run_id' => $runId !== '' ? $runId : null,
             'status' => 'queued',
         ], 'Workflow queued successfully', 202);
     }
