@@ -53,39 +53,44 @@ class WorkflowRunService
      */
     public function run(Workflow $workflow, ?User $actor = null, bool $turnOffDevicesBeforeRun = true): array
     {
-            $this->events = [];
+        $this->events = [];
         $this->currentWorkflowId = (string) $workflow->id;
-        $this->recordEvent('workflow_start', [
-            'workflow_id' => $workflow->id,
-        ]);
+        $this->recordEvent('workflow_start', ['workflow_id' => $workflow->id]);
 
-        $definition = $workflow->control_definition ?? $workflow->definition ?? null;
-        if (! is_array($definition) || empty($definition['nodes'])) {
-            throw new \RuntimeException('Workflow definition is empty.');
-        }
-
-        $nodes = $definition['nodes'] ?? [];
-        $edges = $definition['edges'] ?? [];
-
-        $deviceStatus = $this->workflowRunHttpHelper->fetchDeviceStatus();
-        $this->recordEvent('device_status_fetched', [
-            'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
-        ]);
-        $this->assertDevicesOnline($nodes, $deviceStatus);
-        if ($turnOffDevicesBeforeRun) {
-            $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
-            $this->recordEvent('workflow_devices_ensured_off');
-        } else {
-            $this->recordEvent('workflow_devices_ensure_off_skipped', [
-                'reason' => 'disabled_by_user',
-            ]);
-        }
+        $nodes = [];
 
         try {
+            $definition = $workflow->control_definition;
+            if (! is_array($definition) || empty($definition['nodes'])) {
+                throw new \RuntimeException('Workflow definition is empty.');
+            }
+
+            $nodes = $definition['nodes'] ?? [];
+            $edges = $definition['edges'] ?? [];
+
+            $deviceStatus = $this->workflowRunHttpHelper->fetchDeviceStatus();
+
+            $this->recordEvent('device_status_fetched', [
+                'count' => is_array($deviceStatus) ? count($deviceStatus) : 0,
+            ]);
+
+            $this->assertWorkflowDevicesReady($nodes, $deviceStatus);
+            $devicesChecked = count($this->collectRequiredTargets($nodes)) > 0;
+
+            if ($turnOffDevicesBeforeRun && $devicesChecked) {
+                $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
+                $this->recordEvent('workflow_devices_ensured_off');
+            } else {
+                $this->recordEvent('workflow_devices_ensure_off_skipped', [
+                    'reason' => $turnOffDevicesBeforeRun ? 'devices_not_checked' : 'disabled_by_user',
+                ]);
+            }
+
             $result = $this->executeFlow($nodes, $edges);
             $this->recordEvent('workflow_completed', [
                 'workflow_id' => $workflow->id,
             ]);
+
             SystemLogHelper::log(
                 'workflow.run.completed',
                 'Workflow run completed',
@@ -126,7 +131,6 @@ class WorkflowRunService
                     ['workflow_id' => $workflow->id]
                 );
             }
-            $this->abortWorkflowDevices($nodes, (string) $workflow->id);
             throw $e;
         } finally {
             $this->currentWorkflowId = null;
@@ -195,10 +199,30 @@ class WorkflowRunService
      * @param array<int, mixed> $nodes
      * @param array<int, mixed> $deviceStatus
      */
-    private function assertDevicesOnline(array $nodes, array $deviceStatus): void
+    private function assertWorkflowDevicesReady(array $nodes, array $deviceStatus): void
     {
-        $requiredNodes = $this->collectRequiredNodes($nodes);
-        if (empty($requiredNodes)) {
+        $hasOnlineGateway = false;
+        foreach ($deviceStatus as $gateway) {
+            if (! is_array($gateway)) {
+                continue;
+            }
+            $gatewayId = $gateway['id'] ?? $gateway['gateway_id'] ?? null;
+            $gatewayStatus = strtolower((string) ($gateway['status'] ?? ''));
+            if ($gatewayId && $gatewayStatus === 'online') {
+                $hasOnlineGateway = true;
+                break;
+            }
+        }
+
+        if (! $hasOnlineGateway) {
+            $this->recordEvent('device_status_unavailable', [
+                'reason' => 'no_online_gateway_in_status',
+            ], 'error');
+            throw new \RuntimeException('Workflow cannot run because device status has no online gateway.');
+        }
+
+        $requiredTargets = $this->collectRequiredTargets($nodes);
+        if (empty($requiredTargets)) {
             $this->recordEvent('devices_check_skipped', [
                 'reason' => 'no_action_nodes',
             ]);
@@ -206,16 +230,32 @@ class WorkflowRunService
         }
 
         $this->recordEvent('devices_check_started', [
-            'required_count' => count($requiredNodes),
+            'required_count' => count($requiredTargets),
         ]);
         $onlineNodes = $this->workflowRunDataHelper->indexOnlineNodes($deviceStatus);
 
-        foreach ($requiredNodes as $key => $label) {
+        foreach ($requiredTargets as $key => $target) {
+            $label = (string) ($target['label'] ?? $key);
             if (! isset($onlineNodes[$key])) {
                 $this->recordEvent('device_offline', [
                     'device' => $label,
                 ], 'error');
                 throw new \RuntimeException("Device is offline or missing: {$label}");
+            }
+
+            $gatewayExternalId = (string) ($target['gateway_external_id'] ?? '');
+            $nodeExternalId = (string) ($target['node_external_id'] ?? '');
+            $controllerId = isset($target['controller_id'])
+                ? trim((string) $target['controller_id'])
+                : '';
+            if ($gatewayExternalId !== '' && $nodeExternalId !== '' && $controllerId !== '') {
+                $this->assertControllerExistsInDeviceStatus(
+                    $deviceStatus,
+                    $gatewayExternalId,
+                    $nodeExternalId,
+                    $controllerId,
+                    $label
+                );
             }
         }
 
@@ -227,7 +267,7 @@ class WorkflowRunService
     /**
      * @return array<string, string>
      */
-    private function collectRequiredNodes(array $nodes): array
+    private function collectRequiredTargets(array $nodes): array
     {
         $required = [];
         foreach ($nodes as $node) {
@@ -251,7 +291,12 @@ class WorkflowRunService
                 continue;
             }
             $key = $gatewayExternalId . '::' . $nodeExternalId;
-            $required[$key] = "{$gatewayExternalId} / {$nodeExternalId}";
+            $required[$key] = [
+                'label' => "{$gatewayExternalId} / {$nodeExternalId}",
+                'gateway_external_id' => $gatewayExternalId,
+                'node_external_id' => $nodeExternalId,
+                'controller_id' => $controlUrl->controller_id,
+            ];
         }
 
         return $required;
@@ -674,10 +719,113 @@ class WorkflowRunService
             throw new \RuntimeException("Device is offline or missing: {$gatewayExternalId} / {$nodeExternalId}");
         }
 
+        $controllerId = trim((string) ($controlUrl->controller_id ?? ''));
+        if ($controllerId !== '') {
+            $this->assertControllerExistsInDeviceStatus(
+                $deviceStatus,
+                (string) $gatewayExternalId,
+                (string) $nodeExternalId,
+                $controllerId,
+                "{$gatewayExternalId} / {$nodeExternalId}"
+            );
+        }
+
         $this->recordEvent('action_device_check_passed', [
             'control_url_id' => $controlUrlId,
             'node_id' => $node['id'] ?? null,
         ]);
+    }
+
+    /**
+     * @param array<int, mixed> $deviceStatus
+     */
+    private function assertControllerExistsInDeviceStatus(
+        array $deviceStatus,
+        string $gatewayExternalId,
+        string $nodeExternalId,
+        string $controllerId,
+        string $label
+    ): void {
+        $controllerKey = strtolower(trim($controllerId));
+        if ($controllerKey === '') {
+            return;
+        }
+
+        foreach ($deviceStatus as $gateway) {
+            if (! is_array($gateway)) {
+                continue;
+            }
+            $gatewayId = (string) ($gateway['id'] ?? $gateway['gateway_id'] ?? '');
+            if ($gatewayId !== $gatewayExternalId) {
+                continue;
+            }
+
+            $nodes = $gateway['nodes'] ?? [];
+            if (! is_array($nodes)) {
+                continue;
+            }
+
+            foreach ($nodes as $node) {
+                if (! is_array($node)) {
+                    continue;
+                }
+                $nodeId = (string) ($node['id'] ?? $node['node_id'] ?? '');
+                if ($nodeId !== $nodeExternalId) {
+                    continue;
+                }
+
+                $devices = $node['devices'] ?? [];
+                if (! is_array($devices) || empty($devices)) {
+                    break;
+                }
+
+                foreach ($devices as $device) {
+                    if ($this->matchesControllerDevice($device, $controllerKey, $nodeExternalId)) {
+                        return;
+                    }
+                }
+
+                break;
+            }
+        }
+
+        $this->recordEvent('action_device_not_found_in_status', [
+            'device' => $label,
+            'controller_id' => $controllerId,
+        ], 'error');
+        throw new \RuntimeException(
+            "Controller device is missing in device status: {$label} / {$controllerId}"
+        );
+    }
+
+    /**
+     * @param mixed $device
+     */
+    private function matchesControllerDevice(mixed $device, string $controllerKey, string $nodeExternalId): bool
+    {
+        if (! is_array($device)) {
+            return false;
+        }
+
+        $name = strtolower(trim((string) ($device['name'] ?? '')));
+        if ($name !== '' && $name === $controllerKey) {
+            return true;
+        }
+
+        $id = strtolower(trim((string) ($device['id'] ?? '')));
+        if ($id !== '' && $id === $controllerKey) {
+            return true;
+        }
+
+        $nodePrefix = strtolower($nodeExternalId) . '-';
+        if ($id !== '' && str_starts_with($id, $nodePrefix)) {
+            $suffix = substr($id, strlen($nodePrefix));
+            if ($suffix === $controllerKey) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

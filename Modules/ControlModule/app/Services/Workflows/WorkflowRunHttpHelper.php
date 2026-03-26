@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Http;
 
 class WorkflowRunHttpHelper
 {
+    private const WORKFLOW_CONTROL_RESPONSE_TIMEOUT_MS = 15000;
+
     /**
      * @return array<string, mixed>
      */
@@ -69,16 +71,12 @@ class WorkflowRunHttpHelper
      */
     public function withControlResponseWait(array $payload): array
     {
-        $timeoutMs = (int) config('services.node_server.control_response_timeout_ms', 15000);
-        if ($timeoutMs < 1000) {
-            $timeoutMs = 1000;
-        }
-
         if (! array_key_exists('wait_for_response', $payload)) {
             $payload['wait_for_response'] = true;
         }
         if (! array_key_exists('response_timeout_ms', $payload)) {
-            $payload['response_timeout_ms'] = $timeoutMs;
+            // Workflow commands must wait for device ack and fail fast if no response in 15s.
+            $payload['response_timeout_ms'] = self::WORKFLOW_CONTROL_RESPONSE_TIMEOUT_MS;
         }
 
         return $payload;
