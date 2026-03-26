@@ -12,8 +12,8 @@ use Modules\ControlModule\Http\Requests\StoreWorkflowRequest;
 use Modules\ControlModule\Http\Requests\UpdateWorkflowRequest;
 use Modules\ControlModule\Models\Workflow;
 use Modules\ControlModule\QueryBuilders\WorkflowQueryBuilder;
-use Modules\ControlModule\Services\WorkflowRunStateStore;
 use Modules\ControlModule\Services\WorkflowRunService;
+use Modules\ControlModule\Services\Workflows\WorkflowRunStateStore;
 
 class WorkflowController extends Controller
 {

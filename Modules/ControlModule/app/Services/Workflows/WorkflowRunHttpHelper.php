@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\ControlModule\Services;
+namespace Modules\ControlModule\Services\Workflows;
 
 use Illuminate\Support\Facades\Http;
 
@@ -100,4 +100,3 @@ class WorkflowRunHttpHelper
         ];
     }
 }
-

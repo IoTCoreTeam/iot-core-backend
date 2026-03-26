@@ -6,7 +6,7 @@ use App\Helpers\SystemLogHelper;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Modules\ControlModule\Services\ControlUrlService;
-use Modules\ControlModule\Services\WorkflowRunStateStore;
+use Modules\ControlModule\Services\Workflows\WorkflowRunStateStore;
 
 class ExecuteWorkflowOffCommandJob implements ShouldQueue
 {

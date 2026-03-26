@@ -7,8 +7,8 @@ use App\Models\User;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Modules\ControlModule\Models\Workflow;
-use Modules\ControlModule\Services\WorkflowRunStateStore;
 use Modules\ControlModule\Services\WorkflowRunService;
+use Modules\ControlModule\Services\Workflows\WorkflowRunStateStore;
 
 class RunWorkflowJob implements ShouldQueue
 {

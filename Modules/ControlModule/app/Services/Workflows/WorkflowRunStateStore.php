@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\ControlModule\Services;
+namespace Modules\ControlModule\Services\Workflows;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\ControlModule\Services;
+namespace Modules\ControlModule\Services\Workflows;
 
 class WorkflowRunDataHelper
 {
@@ -181,4 +181,3 @@ class WorkflowRunDataHelper
         return $normalized;
     }
 }
-

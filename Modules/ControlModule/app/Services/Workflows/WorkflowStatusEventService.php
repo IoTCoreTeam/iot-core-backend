@@ -1,6 +1,6 @@
 <?php
 
-namespace Modules\ControlModule\Services;
+namespace Modules\ControlModule\Services\Workflows;
 
 use App\Helpers\SystemLogHelper;
 use Illuminate\Support\Facades\Http;
