@@ -6,7 +6,6 @@ use App\Helpers\SystemLogHelper;
 use App\Models\User;
 use App\Services\NotificationService;
 use Illuminate\Support\Facades\Auth;
-use Modules\ControlModule\Jobs\ExecuteWorkflowOffCommandJob;
 use Modules\ControlModule\Models\ControlUrl;
 use Modules\ControlModule\Models\Workflow;
 
@@ -415,7 +414,8 @@ class WorkflowRunService
             }
 
             if ($state === 'on' && $duration > 0) {
-                $this->dispatchDelayedOffCommand($controlUrlId, $actionType, $normalizedType, $duration, $node);
+                $this->waitActionDuration($duration, $controlUrlId, $node);
+                $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node);
             }
             return;
         }
@@ -440,20 +440,69 @@ class WorkflowRunService
         }
 
         if ($duration > 0) {
-            $this->dispatchDelayedOffCommand($controlUrlId, $actionType, $normalizedType, $duration, $node);
+            $this->waitActionDuration($duration, $controlUrlId, $node);
+            $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node);
             return;
         }
 
+        $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node);
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     */
+    private function waitActionDuration(
+        int $duration,
+        string $controlUrlId,
+        array $node
+    ): void {
+        $delay = max(0, $duration);
+        if ($delay <= 0) {
+            return;
+        }
+
+        $this->recordEvent('action_duration_wait_started', [
+            'control_url_id' => $controlUrlId,
+            'node_id' => $node['id'] ?? null,
+            'delay_seconds' => $delay,
+        ]);
+
+        sleep($delay);
+
+        $this->recordEvent('action_duration_wait_completed', [
+            'control_url_id' => $controlUrlId,
+            'node_id' => $node['id'] ?? null,
+            'delay_seconds' => $delay,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     */
+    private function sendActionOff(
+        string $controlUrlId,
+        string $actionType,
+        ?string $normalizedType,
+        array $node
+    ): void {
         try {
+            $payload = [
+                // Ensure action_type is always present for IoT firmware routing.
+                'action_type' => $actionType,
+            ];
+            if ($normalizedType === 'analog') {
+                $payload['value'] = 0;
+            } else {
+                $payload['state'] = 'off';
+            }
             $this->recordEvent('action_off', [
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
             ]);
-            $this->controlUrlService->execute($controlUrlId, $this->workflowRunHttpHelper->withControlResponseWait([
-                // Ensure action_type is always present for IoT firmware routing.
-                'action_type' => $actionType,
-                'state' => 'off',
-            ]));
+            $this->controlUrlService->execute(
+                $controlUrlId,
+                $this->workflowRunHttpHelper->withControlResponseWait($payload)
+            );
         } catch (\Throwable $e) {
             $this->recordEvent('action_off_failed', [
                 'control_url_id' => $controlUrlId,
@@ -462,42 +511,6 @@ class WorkflowRunService
             ], 'error');
             throw $e;
         }
-    }
-
-    /**
-     * @param array<string, mixed> $node
-     */
-    private function dispatchDelayedOffCommand(
-        string $controlUrlId,
-        string $actionType,
-        ?string $normalizedType,
-        int $duration,
-        array $node
-    ): void {
-        $kind = $normalizedType === 'analog' ? 'analog' : 'digital';
-
-        $this->recordEvent('action_off_scheduled', [
-            'control_url_id' => $controlUrlId,
-            'node_id' => $node['id'] ?? null,
-            'delay_seconds' => $duration,
-            'input_type' => $kind,
-        ]);
-
-        if ($this->currentRunId) {
-            $this->workflowRunStateStore->incrementPendingOffJobs($this->currentRunId, [
-                'control_url_id' => $controlUrlId,
-                'node_id' => $node['id'] ?? null,
-                'delay_seconds' => $duration,
-                'input_type' => $kind,
-            ]);
-        }
-
-        ExecuteWorkflowOffCommandJob::dispatch(
-            $controlUrlId,
-            $actionType,
-            $kind,
-            $this->currentRunId
-        )->delay(now()->addSeconds(max(0, $duration)));
     }
 
     private function resolveControlUrlInputType(string $controlUrlId): ?string

@@ -17,4 +17,12 @@ class SystemLogController extends Controller
     {
         return response()->json(SystemLog::countByWeekAndLevel());
     }
+
+    public function countTopActions(Request $request)
+    {
+        $days = max(1, $request->integer('days', 7));
+        $limit = max(1, $request->integer('limit', 6));
+
+        return response()->json(SystemLog::countTopActions($days, $limit));
+    }
 }

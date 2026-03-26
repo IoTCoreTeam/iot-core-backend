@@ -84,4 +84,32 @@ class SystemLog extends Model
             ],
         ];
     }
+
+    public static function countTopActions(int $days = 7, int $limit = 6): array
+    {
+        $days = max(1, $days);
+        $limit = max(1, $limit);
+        $startDate = \Carbon\Carbon::now()->subDays($days)->startOfDay();
+
+        $rows = self::query()
+            ->selectRaw('action, COUNT(*) as total')
+            ->where('created_at', '>=', $startDate)
+            ->whereNotNull('action')
+            ->where('action', '!=', '')
+            ->groupBy('action')
+            ->orderByDesc('total')
+            ->limit($limit)
+            ->get();
+
+        return [
+            'categories' => $rows->pluck('action')->values()->all(),
+            'series' => [
+                [
+                    'name' => 'Count',
+                    'data' => $rows->pluck('total')->map(fn ($value) => (int) $value)->values()->all(),
+                ],
+            ],
+            'days' => $days,
+        ];
+    }
 }
