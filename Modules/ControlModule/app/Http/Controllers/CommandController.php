@@ -12,6 +12,13 @@ class CommandController extends Controller
     {
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
         $page = max(1, $request->integer('page', 1));
+        $includes = collect(explode(',', (string) $request->query('include', '')))
+            ->map(fn ($include) => strtolower(trim((string) $include)))
+            ->filter()
+            ->unique()
+            ->values();
+        $includeAll = $includes->contains('all');
+        $onlyTrashed = $includes->contains('trashed');
 
         $jsonQuery = DB::table('control_json_commands as cjc')
             ->join('control_urls as cu', 'cu.id', '=', 'cjc.control_url_id')
@@ -30,6 +37,7 @@ class CommandController extends Controller
                 null as resolution_bits,
                 cjc.created_at as created_at,
                 cjc.updated_at as updated_at,
+                cjc.deleted_at as deleted_at,
                 cu.id as control_url_ref_id,
                 cu.node_id as node_id,
                 cu.controller_id as controller_id,
@@ -37,8 +45,21 @@ class CommandController extends Controller
                 cu.url as control_url,
                 cu.input_type as control_url_input_type,
                 n.external_id as node_external_id,
-                g.external_id as gateway_external_id
+                g.external_id as gateway_external_id,
+                cu.deleted_at as control_url_deleted_at,
+                n.deleted_at as node_deleted_at,
+                g.deleted_at as gateway_deleted_at
             ");
+
+        if (! $includeAll && ! $onlyTrashed) {
+            $jsonQuery
+                ->whereNull('cjc.deleted_at')
+                ->whereNull('cu.deleted_at')
+                ->whereNull('n.deleted_at')
+                ->whereNull('g.deleted_at');
+        } elseif ($onlyTrashed) {
+            $jsonQuery->whereNotNull('cjc.deleted_at');
+        }
 
         $analogQuery = DB::table('control_analog_signals as cas')
             ->join('control_urls as cu', 'cu.id', '=', 'cas.control_url_id')
@@ -57,6 +78,7 @@ class CommandController extends Controller
                 cas.resolution_bits as resolution_bits,
                 cas.created_at as created_at,
                 cas.updated_at as updated_at,
+                cas.deleted_at as deleted_at,
                 cu.id as control_url_ref_id,
                 cu.node_id as node_id,
                 cu.controller_id as controller_id,
@@ -64,8 +86,21 @@ class CommandController extends Controller
                 cu.url as control_url,
                 cu.input_type as control_url_input_type,
                 n.external_id as node_external_id,
-                g.external_id as gateway_external_id
+                g.external_id as gateway_external_id,
+                cu.deleted_at as control_url_deleted_at,
+                n.deleted_at as node_deleted_at,
+                g.deleted_at as gateway_deleted_at
             ");
+
+        if (! $includeAll && ! $onlyTrashed) {
+            $analogQuery
+                ->whereNull('cas.deleted_at')
+                ->whereNull('cu.deleted_at')
+                ->whereNull('n.deleted_at')
+                ->whereNull('g.deleted_at');
+        } elseif ($onlyTrashed) {
+            $analogQuery->whereNotNull('cas.deleted_at');
+        }
 
         $union = $jsonQuery->unionAll($analogQuery);
         $query = DB::query()->fromSub($union, 'commands');
@@ -123,6 +158,7 @@ class CommandController extends Controller
                 'resolution_bits' => $row->resolution_bits !== null ? (int) $row->resolution_bits : null,
                 'created_at' => $row->created_at,
                 'updated_at' => $row->updated_at,
+                'deleted_at' => $row->deleted_at,
                 'control_url' => [
                     'id' => (string) $row->control_url_ref_id,
                     'node_id' => $row->node_id ? (string) $row->node_id : null,
@@ -132,6 +168,9 @@ class CommandController extends Controller
                     'name' => (string) $row->control_url_name,
                     'url' => (string) $row->control_url,
                     'input_type' => (string) $row->control_url_input_type,
+                    'deleted_at' => $row->control_url_deleted_at,
+                    'node_deleted_at' => $row->node_deleted_at,
+                    'gateway_deleted_at' => $row->gateway_deleted_at,
                 ],
                 'detail' => [
                     'json_command' => $row->command_type === 'json_command'

@@ -13,7 +13,10 @@ return new class extends Migration
     {
         Schema::create('control_json_commands', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->foreignUuid('control_url_id')->constrained('control_urls')->cascadeOnDelete();
+            $table->foreignUuid('control_url_id')
+                ->constrained('control_urls')
+                ->cascadeOnUpdate()
+                ->cascadeOnDelete();
             $table->string('name');
             $table->json('command');
             $table->timestamps();
