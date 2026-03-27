@@ -2,7 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\ControlModule\Http\Controllers\ControlAnalogSignalController;
+use Modules\ControlModule\Http\Controllers\ControlJsonCommandController;
 use Modules\ControlModule\Http\Controllers\ControlUrlController;
+use Modules\ControlModule\Http\Controllers\CommandController;
 use Modules\ControlModule\Http\Controllers\GatewayController;
 use Modules\ControlModule\Http\Controllers\NodeController;
 use Modules\ControlModule\Http\Controllers\WorkflowController;
@@ -46,6 +48,21 @@ Route::middleware(['auth:api', 'admin_or_engineer'])->prefix('v1')->group(functi
             ->name('control-analog-signals.index');
         Route::post('createorupdate', [ControlAnalogSignalController::class, 'createOrUpdate'])
             ->name('control-analog-signals.createorupdate');
+    });
+
+    Route::prefix('control-json-commands')->group(function (): void {
+        Route::get('/', [ControlJsonCommandController::class, 'index'])
+            ->name('control-json-commands.index');
+        Route::post('/', [ControlJsonCommandController::class, 'store'])
+            ->name('control-json-commands.store');
+        Route::put('{id}', [ControlJsonCommandController::class, 'update'])
+            ->name('control-json-commands.update');
+        Route::delete('{id}', [ControlJsonCommandController::class, 'delete'])
+            ->name('control-json-commands.delete');
+    });
+
+    Route::prefix('commands')->group(function (): void {
+        Route::get('/', [CommandController::class, 'index'])->name('commands.index');
     });
 
     Route::prefix('workflows')->group(function (): void {

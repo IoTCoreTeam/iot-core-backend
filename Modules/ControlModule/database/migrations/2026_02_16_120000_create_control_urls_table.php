@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('url');
             $table->string('input_type');
             $table->timestamps();
+            $table->softDeletes();
         });
 
     }

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\ControlModule\Helpers\ApiResponse;
 use Modules\ControlModule\Http\Requests\StoreControlAnalogSignalRequest;
-use Modules\ControlModule\Http\Requests\UpdateControlAnalogSignalRequest;
 use Modules\ControlModule\Models\ControlAnalogSignal;
 use Modules\ControlModule\Services\ControlAnalogSignalService;
 
@@ -18,10 +17,15 @@ class ControlAnalogSignalController extends Controller
      */
     public function index(Request $request)
     {
-        if($request->has('control_url_id')) {
-            $signal = ControlAnalogSignal::query()->where('control_url_id', $request->query('control_url_id'))->first();
-        }
-        return ApiResponse::success($signal);
+        $signals = ControlAnalogSignal::query()
+            ->when($request->filled('control_url_id'), function ($query) use ($request) {
+                $query->where('control_url_id', (string) $request->query('control_url_id'));
+            })
+            ->with(['controlUrl'])
+            ->orderByDesc('created_at')
+            ->paginate($request->integer('per_page', 10));
+
+        return ApiResponse::success($signals);
     }
 
     public function createOrUpdate(StoreControlAnalogSignalRequest $request)

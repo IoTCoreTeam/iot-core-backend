@@ -8,10 +8,18 @@ use Modules\ControlModule\Models\ControlUrl;
 
 class ControlUrlQueryBuilder
 {
+    private static function applyControlCounts(Builder $query): Builder
+    {
+        return $query->withCount([
+            'analogSignal as analog_count',
+            'jsonCommands as command_count',
+        ]);
+    }
+
     public static function fromRequest(Request $request)
     {
         $perPage = $request->integer('per_page', 10);
-        $query = self::buildQuery($request);
+        $query = self::applyControlCounts(self::buildQuery($request));
 
         return $query->orderByDesc('created_at')->paginate($perPage);
     }
@@ -29,9 +37,13 @@ class ControlUrlQueryBuilder
         $relations = [];
 
         if ($includes->contains('gateway')) {
-            $relations[] = 'node.gateway';
+            $relations['node'] = function ($nodeQuery) {
+                $nodeQuery->withTrashed()->with([
+                    'gateway' => fn ($gatewayQuery) => $gatewayQuery->withTrashed(),
+                ]);
+            };
         } elseif ($includes->contains('node')) {
-            $relations[] = 'node';
+            $relations['node'] = fn ($nodeQuery) => $nodeQuery->withTrashed();
         }
 
         if ($includes->contains('analog_signal') || $includes->contains('analogSignal')) {

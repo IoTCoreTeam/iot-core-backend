@@ -99,8 +99,11 @@ class ControlUrlService
             return ControlUrl::create($payload);
         }
 
-        $existing = ControlUrl::where('controller_id', $controllerId)->first();
+        $existing = ControlUrl::withTrashed()->where('controller_id', $controllerId)->first();
         if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
             $existing->update($payload);
             return $existing;
         }

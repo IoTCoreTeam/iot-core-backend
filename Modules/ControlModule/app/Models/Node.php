@@ -52,4 +52,41 @@ class Node extends Model
                 ->orWhere('external_id', 'like', "%{$keyword}%");
         });
     }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Node $node): void {
+            if ($node->isForceDeleting()) {
+                return;
+            }
+
+            $timestamp = $node->freshTimestampString();
+            $controlUrlIds = $node->controlUrls()->pluck('id');
+
+            if ($controlUrlIds->isEmpty()) {
+                return;
+            }
+
+            ControlJsonCommand::whereIn('control_url_id', $controlUrlIds)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ]);
+
+            ControlAnalogSignal::whereIn('control_url_id', $controlUrlIds)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ]);
+
+            ControlUrl::whereIn('id', $controlUrlIds)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ]);
+        });
+    }
 }
