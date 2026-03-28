@@ -23,8 +23,8 @@ class UpdateControlJsonCommandRequest extends FormRequest
     {
         return [
             'control_url_id' => 'sometimes|uuid|exists:control_urls,id',
-            'name' => 'sometimes|nullable|string|max:255',
-            'command' => 'sometimes',
+            'name' => 'sometimes|required|string|max:255',
+            'command' => 'sometimes|array',
         ];
     }
 }

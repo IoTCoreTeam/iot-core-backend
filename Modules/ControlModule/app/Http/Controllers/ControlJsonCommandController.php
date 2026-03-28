@@ -22,7 +22,11 @@ class ControlJsonCommandController extends Controller
             ->when($request->filled('control_url_id'), function ($query) use ($request) {
                 $query->where('control_url_id', (string) $request->query('control_url_id'));
             })
-            ->with(['controlUrl'])
+            ->with([
+                'controlUrl',
+                'controlUrl.node:id,external_id',
+                'controlUrl.node.gateway:id,external_id',
+            ])
             ->orderByDesc('created_at')
             ->paginate($perPage);
     }
