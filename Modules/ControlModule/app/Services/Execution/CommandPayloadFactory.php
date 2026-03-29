@@ -16,6 +16,7 @@ class CommandPayloadFactory
         $node = $controlUrl->node;
         $gatewayExternalId = $node?->gateway?->external_id;
         $nodeExternalId = $node?->external_id;
+        $targetUrl = (string) ($payload['url'] ?? $controlUrl->url ?? '');
 
         $commandPayload = $payload;
         unset($commandPayload['url']);
@@ -26,6 +27,29 @@ class CommandPayloadFactory
 
         if (! empty($nodeExternalId)) {
             $commandPayload['node_id'] = $nodeExternalId;
+        }
+
+        if (
+            (! array_key_exists('device', $commandPayload) || trim((string) $commandPayload['device']) === '')
+            && $targetUrl !== ''
+        ) {
+            $path = parse_url($targetUrl, PHP_URL_PATH);
+            if (! is_string($path) || trim($path) === '') {
+                $path = $targetUrl;
+            }
+
+            $segments = array_values(array_filter(
+                explode('/', trim((string) $path, '/')),
+                static fn (string $segment): bool => $segment !== ''
+            ));
+
+            if (count($segments) > 0) {
+                $candidate = (string) end($segments);
+                $device = strtolower(trim($candidate));
+                if ($device !== '' && ! in_array($device, ['health', 'enqueue', 'execute'], true)) {
+                    $commandPayload['device'] = $device;
+                }
+            }
         }
 
         $inputType = strtolower(trim((string) ($controlUrl->input_type ?? '')));
@@ -92,6 +116,14 @@ class CommandPayloadFactory
         }
 
         $resolvedCommandPayload = $this->ensureJsonObject($commandPayload['command_payload'], 'command_payload');
+
+        // For json_command, keep command schema from stored template.
+        // UI may send top-level state/value, we only map them into command_payload.value.
+        if (array_key_exists('state', $commandPayload)) {
+            $resolvedCommandPayload['value'] = $commandPayload['state'];
+        } elseif (array_key_exists('value', $commandPayload)) {
+            $resolvedCommandPayload['value'] = $commandPayload['value'];
+        }
 
         if (array_key_exists('command_overrides', $commandPayload)) {
             $overrides = $this->ensureJsonObject($commandPayload['command_overrides'], 'command_overrides');
@@ -186,4 +218,5 @@ class CommandPayloadFactory
         $commandPayload['json_command_id'] = (string) $model->id;
         $commandPayload['json_command_name'] = (string) $model->name;
     }
+
 }

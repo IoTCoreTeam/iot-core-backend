@@ -50,6 +50,10 @@ class ControlUrlQueryBuilder
             $relations[] = 'analogSignal';
         }
 
+        if ($includes->contains('json_commands') || $includes->contains('jsonCommands')) {
+            $relations[] = 'jsonCommands';
+        }
+
         if ($relations) {
             $query->with($relations);
         }
