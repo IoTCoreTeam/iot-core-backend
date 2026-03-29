@@ -27,6 +27,11 @@ class UpdateControlUrlRequest extends FormRequest
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'url' => ['sometimes', 'required', 'string', 'max:2048'],
             'input_type' => ['sometimes', 'required', 'string', 'max:100'],
+            'min_value' => ['sometimes', 'nullable', 'numeric', 'lte:max_value'],
+            'max_value' => ['sometimes', 'nullable', 'numeric', 'gte:min_value'],
+            'unit' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'signal_type' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'resolution_bits' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:255'],
         ];
     }
 }

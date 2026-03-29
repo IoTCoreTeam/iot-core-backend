@@ -62,24 +62,23 @@ class CommandController extends Controller
             $jsonQuery->whereNotNull('cjc.deleted_at');
         }
 
-        $analogQuery = DB::table('control_analog_signals as cas')
-            ->join('control_urls as cu', 'cu.id', '=', 'cas.control_url_id')
+        $analogQuery = DB::table('control_urls as cu')
             ->leftJoin('nodes as n', 'n.id', '=', 'cu.node_id')
             ->leftJoin('gateways as g', 'g.id', '=', 'n.gateway_id')
             ->selectRaw("
-                cas.id as id,
-                cas.control_url_id as control_url_id,
+                cu.id as id,
+                cu.id as control_url_id,
                 'analog_signal' as command_type,
-                cas.signal_type as command_name,
+                cu.signal_type as command_name,
                 null as command_payload,
-                cas.min_value as min_value,
-                cas.max_value as max_value,
-                cas.unit as unit,
-                cas.signal_type as signal_type,
-                cas.resolution_bits as resolution_bits,
-                cas.created_at as created_at,
-                cas.updated_at as updated_at,
-                cas.deleted_at as deleted_at,
+                cu.min_value as min_value,
+                cu.max_value as max_value,
+                cu.unit as unit,
+                cu.signal_type as signal_type,
+                cu.resolution_bits as resolution_bits,
+                cu.created_at as created_at,
+                cu.updated_at as updated_at,
+                cu.deleted_at as deleted_at,
                 cu.id as control_url_ref_id,
                 cu.node_id as node_id,
                 cu.controller_id as controller_id,
@@ -96,12 +95,20 @@ class CommandController extends Controller
 
         if (! $includeAll && ! $onlyTrashed) {
             $analogQuery
-                ->whereNull('cas.deleted_at')
+                ->whereRaw("LOWER(COALESCE(cu.input_type, '')) LIKE '%analog%'")
+                ->whereNotNull('cu.max_value')
                 ->whereNull('cu.deleted_at')
                 ->whereNull('n.deleted_at')
                 ->whereNull('g.deleted_at');
         } elseif ($onlyTrashed) {
-            $analogQuery->whereNotNull('cas.deleted_at');
+            $analogQuery
+                ->whereRaw("LOWER(COALESCE(cu.input_type, '')) LIKE '%analog%'")
+                ->whereNotNull('cu.max_value')
+                ->whereNotNull('cu.deleted_at');
+        } else {
+            $analogQuery
+                ->whereRaw("LOWER(COALESCE(cu.input_type, '')) LIKE '%analog%'")
+                ->whereNotNull('cu.max_value');
         }
 
         $union = $jsonQuery->unionAll($analogQuery);

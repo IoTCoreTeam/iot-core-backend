@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\ControlModule\Helpers\ApiResponse;
 use Modules\ControlModule\Http\Requests\StoreControlAnalogSignalRequest;
-use Modules\ControlModule\Models\ControlAnalogSignal;
+use Modules\ControlModule\Models\ControlUrl;
 use Modules\ControlModule\Services\ControlAnalogSignalService;
 
 class ControlAnalogSignalController extends Controller
@@ -17,13 +17,28 @@ class ControlAnalogSignalController extends Controller
      */
     public function index(Request $request)
     {
-        $signals = ControlAnalogSignal::query()
+        $signals = ControlUrl::query()
+            ->whereRaw("LOWER(COALESCE(input_type, '')) LIKE '%analog%'")
+            ->whereNotNull('max_value')
             ->when($request->filled('control_url_id'), function ($query) use ($request) {
-                $query->where('control_url_id', (string) $request->query('control_url_id'));
+                $query->where('id', (string) $request->query('control_url_id'));
             })
-            ->with(['controlUrl'])
             ->orderByDesc('created_at')
-            ->paginate($request->integer('per_page', 10));
+            ->paginate($request->integer('per_page', 10))
+            ->through(function (ControlUrl $controlUrl): array {
+                return $controlUrl->analog_signal ?? [
+                    'id' => (string) $controlUrl->id,
+                    'control_url_id' => (string) $controlUrl->id,
+                    'min_value' => $controlUrl->min_value,
+                    'max_value' => $controlUrl->max_value,
+                    'unit' => $controlUrl->unit,
+                    'signal_type' => $controlUrl->signal_type,
+                    'resolution_bits' => $controlUrl->resolution_bits,
+                    'created_at' => $controlUrl->created_at,
+                    'updated_at' => $controlUrl->updated_at,
+                    'deleted_at' => $controlUrl->deleted_at,
+                ];
+            });
 
         return ApiResponse::success($signals);
     }

@@ -60,13 +60,6 @@ class Gateway extends Model
                         'updated_at' => $timestamp,
                     ]);
 
-                ControlAnalogSignal::whereIn('control_url_id', $controlUrlIds)
-                    ->whereNull('deleted_at')
-                    ->update([
-                        'deleted_at' => $timestamp,
-                        'updated_at' => $timestamp,
-                    ]);
-
                 ControlUrl::whereIn('id', $controlUrlIds)
                     ->whereNull('deleted_at')
                     ->update([

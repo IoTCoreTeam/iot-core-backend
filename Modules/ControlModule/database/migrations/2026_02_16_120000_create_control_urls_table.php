@@ -14,13 +14,18 @@ return new class extends Migration
         Schema::create('control_urls', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('node_id')->constrained('nodes')->cascadeOnDelete();
+            $table->string('controller_id')->nullable()->unique();
             $table->string('name');
             $table->string('url');
             $table->string('input_type');
+            $table->decimal('min_value', 12, 4)->nullable();
+            $table->decimal('max_value', 12, 4)->nullable();
+            $table->string('unit')->nullable();
+            $table->string('signal_type')->nullable();
+            $table->unsignedTinyInteger('resolution_bits')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
-
     }
 
     /**

@@ -29,6 +29,13 @@ class CommandPayloadFactory
             $commandPayload['node_id'] = $nodeExternalId;
         }
 
+        if (! array_key_exists('device', $commandPayload) || trim((string) $commandPayload['device']) === '') {
+            $deviceFromName = trim((string) ($controlUrl->name ?? ''));
+            if ($deviceFromName !== '') {
+                $commandPayload['device'] = $deviceFromName;
+            }
+        }
+
         if (
             (! array_key_exists('device', $commandPayload) || trim((string) $commandPayload['device']) === '')
             && $targetUrl !== ''

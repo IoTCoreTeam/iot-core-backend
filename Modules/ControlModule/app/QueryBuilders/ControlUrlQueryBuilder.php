@@ -10,10 +10,19 @@ class ControlUrlQueryBuilder
 {
     private static function applyControlCounts(Builder $query): Builder
     {
-        return $query->withCount([
-            'analogSignal as analog_count',
-            'jsonCommands as command_count',
-        ]);
+        return $query
+            ->select('control_urls.*')
+            ->selectRaw("
+                CASE
+                    WHEN LOWER(COALESCE(control_urls.input_type, '')) LIKE '%analog%'
+                        AND control_urls.max_value IS NOT NULL
+                    THEN 1
+                    ELSE 0
+                END AS analog_count
+            ")
+            ->withCount([
+                'jsonCommands as command_count',
+            ]);
     }
 
     public static function fromRequest(Request $request)
@@ -44,10 +53,6 @@ class ControlUrlQueryBuilder
             };
         } elseif ($includes->contains('node')) {
             $relations['node'] = fn ($nodeQuery) => $nodeQuery->withTrashed();
-        }
-
-        if ($includes->contains('analog_signal') || $includes->contains('analogSignal')) {
-            $relations[] = 'analogSignal';
         }
 
         if ($includes->contains('json_commands') || $includes->contains('jsonCommands')) {

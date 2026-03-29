@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Modules\ControlModule\Models\ControlAnalogSignal;
 use Modules\ControlModule\Models\ControlUrl;
 
 class ControlJsonCommand extends Model
@@ -30,10 +29,5 @@ class ControlJsonCommand extends Model
     public function controlUrl()
     {
         return $this->belongsTo(ControlUrl::class);
-    }
-
-    public function analogSignal()
-    {
-        return $this->hasOne(ControlAnalogSignal::class, 'control_url_id', 'control_url_id');
     }
 }

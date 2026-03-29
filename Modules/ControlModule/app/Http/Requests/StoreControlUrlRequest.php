@@ -27,6 +27,11 @@ class StoreControlUrlRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'url' => ['required', 'string', 'max:2048'],
             'input_type' => ['required', 'string', 'max:100'],
+            'min_value' => ['nullable', 'numeric', 'lte:max_value'],
+            'max_value' => ['nullable', 'numeric', 'gte:min_value'],
+            'unit' => ['nullable', 'string', 'max:255'],
+            'signal_type' => ['nullable', 'string', 'max:255'],
+            'resolution_bits' => ['nullable', 'integer', 'min:1', 'max:255'],
         ];
     }
 }
