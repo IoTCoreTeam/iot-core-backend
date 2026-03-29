@@ -123,13 +123,35 @@ class CommandPayloadFactory
         }
 
         $resolvedCommandPayload = $this->ensureJsonObject($commandPayload['command_payload'], 'command_payload');
+        $commandMode = strtolower(trim((string) ($resolvedCommandPayload['mode'] ?? '')));
 
         // For json_command, keep command schema from stored template.
         // UI may send top-level state/value, we only map them into command_payload.value.
-        if (array_key_exists('state', $commandPayload)) {
-            $resolvedCommandPayload['value'] = $commandPayload['state'];
-        } elseif (array_key_exists('value', $commandPayload)) {
-            $resolvedCommandPayload['value'] = $commandPayload['value'];
+        if ($commandMode === 'analog') {
+            if (array_key_exists('value', $commandPayload)) {
+                $resolvedCommandPayload['value'] = $commandPayload['value'];
+            } elseif (array_key_exists('state', $commandPayload)) {
+                $state = strtolower(trim((string) $commandPayload['state']));
+                if (in_array($state, ['off', 'false', '0'], true)) {
+                    $resolvedCommandPayload['value'] = 0;
+                } elseif (in_array($state, ['on', 'true', '1'], true)) {
+                    $resolvedCommandPayload['value'] = 1;
+                } else {
+                    $resolvedCommandPayload['value'] = $commandPayload['state'];
+                }
+            }
+        } elseif ($commandMode === 'digital') {
+            if (array_key_exists('state', $commandPayload)) {
+                $resolvedCommandPayload['value'] = $commandPayload['state'];
+            } elseif (array_key_exists('value', $commandPayload)) {
+                $resolvedCommandPayload['value'] = $commandPayload['value'];
+            }
+        } else {
+            if (array_key_exists('state', $commandPayload)) {
+                $resolvedCommandPayload['value'] = $commandPayload['state'];
+            } elseif (array_key_exists('value', $commandPayload)) {
+                $resolvedCommandPayload['value'] = $commandPayload['value'];
+            }
         }
 
         if (array_key_exists('command_overrides', $commandPayload)) {
@@ -140,7 +162,9 @@ class CommandPayloadFactory
         $commandPayload['command_payload'] = $resolvedCommandPayload;
 
         if (! array_key_exists('action_type', $commandPayload) || trim((string) $commandPayload['action_type']) === '') {
-            $commandPayload['action_type'] = 'relay_control';
+            $commandPayload['action_type'] = in_array($commandMode, ['digital', 'analog'], true)
+                ? $commandMode
+                : 'relay_control';
         }
 
         $this->saveJsonCommandPayloadIfRequested($controlUrl, $commandPayload, $resolvedCommandPayload);

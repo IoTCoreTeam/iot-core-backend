@@ -326,10 +326,14 @@ class WorkflowRunService
                 ]);
                 $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
                 $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
-                $payload = [
-                    'action_type' => $actionType,
-                ];
+                $payload = [];
+                if ($normalizedType !== 'json_command') {
+                    $payload['action_type'] = $actionType;
+                }
                 if ($normalizedType === 'analog') {
+                    $payload['value'] = 0;
+                } elseif ($normalizedType === 'json_command') {
+                    $payload['state'] = 'off';
                     $payload['value'] = 0;
                 } else {
                     $payload['state'] = 'off';
@@ -431,10 +435,17 @@ class WorkflowRunService
         $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
         $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
         $actionValue = $node['action_value'] ?? null;
+        $isJsonCommand = $normalizedType === 'json_command';
 
         $this->assertActionDeviceOnline($node);
 
-        if ($actionValue !== null && $normalizedType === 'analog') {
+        if (
+            $actionValue !== null
+            && (
+                $normalizedType === 'analog'
+                || ($isJsonCommand && is_numeric($actionValue))
+            )
+        ) {
             if (! is_numeric($actionValue)) {
                 throw new \RuntimeException('Analog action value must be numeric.');
             }
@@ -448,10 +459,10 @@ class WorkflowRunService
                 $this->controlUrlService->execute(
                     $controlUrlId,
                     $this->workflowRunHttpHelper->withControlResponseWait(
-                        $this->withWorkflowCommandContext([
-                            'action_type' => $actionType,
-                            'value' => $value,
-                        ])
+                        $this->withWorkflowCommandContext(array_merge(
+                            $isJsonCommand ? [] : ['action_type' => $actionType],
+                            ['value' => $value]
+                        ))
                     )
                 );
             } catch (\Throwable $e) {
@@ -465,11 +476,14 @@ class WorkflowRunService
             return;
         }
 
-        if ($actionValue !== null && $normalizedType === 'digital') {
+        if ($actionValue !== null) {
             $state = strtolower((string) $actionValue);
-            if ($state !== 'on' && $state !== 'off') {
+            $isDigitalState = $state === 'on' || $state === 'off';
+
+            if ($normalizedType === 'digital' && ! $isDigitalState) {
                 throw new \RuntimeException('Digital action value must be "on" or "off".');
             }
+            if (($normalizedType === 'digital' || $isJsonCommand) && $isDigitalState) {
             try {
                 $this->recordEvent($state === 'on' ? 'action_on' : 'action_off', [
                     'control_url_id' => $controlUrlId,
@@ -478,11 +492,10 @@ class WorkflowRunService
                 $this->controlUrlService->execute(
                     $controlUrlId,
                     $this->workflowRunHttpHelper->withControlResponseWait(
-                        $this->withWorkflowCommandContext([
-                            // Ensure action_type is always present for IoT firmware routing.
-                            'action_type' => $actionType,
-                            'state' => $state,
-                        ])
+                        $this->withWorkflowCommandContext(array_merge(
+                            $isJsonCommand ? [] : ['action_type' => $actionType],
+                            ['state' => $state]
+                        ))
                     )
                 );
             } catch (\Throwable $e) {
@@ -499,6 +512,7 @@ class WorkflowRunService
                 $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node);
             }
             return;
+            }
         }
 
         try {
@@ -509,11 +523,10 @@ class WorkflowRunService
             $this->controlUrlService->execute(
                 $controlUrlId,
                 $this->workflowRunHttpHelper->withControlResponseWait(
-                    $this->withWorkflowCommandContext([
-                        // Ensure action_type is always present for IoT firmware routing.
-                        'action_type' => $actionType,
-                        'state' => 'on',
-                    ])
+                    $this->withWorkflowCommandContext(array_merge(
+                        $isJsonCommand ? [] : ['action_type' => $actionType],
+                        ['state' => 'on']
+                    ))
                 )
             );
         } catch (\Throwable $e) {
@@ -572,11 +585,15 @@ class WorkflowRunService
         array $node
     ): void {
         try {
-            $payload = [
-                // Ensure action_type is always present for IoT firmware routing.
-                'action_type' => $actionType,
-            ];
+            $payload = [];
+            if ($normalizedType !== 'json_command') {
+                // Ensure action_type is present for non-json command routing.
+                $payload['action_type'] = $actionType;
+            }
             if ($normalizedType === 'analog') {
+                $payload['value'] = 0;
+            } elseif ($normalizedType === 'json_command') {
+                $payload['state'] = 'off';
                 $payload['value'] = 0;
             } else {
                 $payload['state'] = 'off';
