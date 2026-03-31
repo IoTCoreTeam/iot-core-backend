@@ -165,19 +165,4 @@ class WorkflowRunDataHelper
         };
     }
 
-    public function normalizeControlInputType(?string $inputType): ?string
-    {
-        $normalized = strtolower(trim((string) ($inputType ?? '')));
-        if ($normalized === '') {
-            return null;
-        }
-        if (str_contains($normalized, 'analog')) {
-            return 'analog';
-        }
-        if (str_contains($normalized, 'digital') || str_contains($normalized, 'relay')) {
-            return 'digital';
-        }
-
-        return $normalized;
-    }
 }

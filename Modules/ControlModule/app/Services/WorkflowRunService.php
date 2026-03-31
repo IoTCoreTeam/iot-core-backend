@@ -325,19 +325,10 @@ class WorkflowRunService
                     'control_url_id' => $controlUrlId,
                 ]);
                 $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
-                $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
-                $payload = [];
-                if ($normalizedType !== 'json_command') {
-                    $payload['action_type'] = $actionType;
-                }
-                if ($normalizedType === 'analog') {
-                    $payload['value'] = 0;
-                } elseif ($normalizedType === 'json_command') {
-                    $payload['state'] = 'off';
-                    $payload['value'] = 0;
-                } else {
-                    $payload['state'] = 'off';
-                }
+                $payload = [
+                    'action_type' => $actionType,
+                    'state' => 'off',
+                ];
                 $this->controlUrlService->execute(
                     $controlUrlId,
                     $this->workflowRunHttpHelper->withControlResponseWait(
@@ -433,33 +424,20 @@ class WorkflowRunService
         }
         $duration = (int) ($node['duration_seconds'] ?? 0);
         $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
-        $normalizedType = $this->workflowRunDataHelper->normalizeControlInputType($actionType);
         $actionValue = $node['action_value'] ?? null;
-        $isJsonCommand = $normalizedType === 'json_command';
         $jsonCommandPayload = [];
-        if ($isJsonCommand) {
-            $jsonCommandId = trim((string) ($node['json_command_id'] ?? ''));
-            $jsonCommandName = trim((string) ($node['json_command_name'] ?? ''));
-            if ($jsonCommandId !== '') {
-                $jsonCommandPayload['json_command_id'] = $jsonCommandId;
-            }
-            if ($jsonCommandName !== '') {
-                $jsonCommandPayload['json_command_name'] = $jsonCommandName;
-            }
+        $jsonCommandId = trim((string) ($node['json_command_id'] ?? ''));
+        $jsonCommandName = trim((string) ($node['json_command_name'] ?? ''));
+        if ($jsonCommandId !== '') {
+            $jsonCommandPayload['json_command_id'] = $jsonCommandId;
+        }
+        if ($jsonCommandName !== '') {
+            $jsonCommandPayload['json_command_name'] = $jsonCommandName;
         }
 
         $this->assertActionDeviceOnline($node);
 
-        if (
-            $actionValue !== null
-            && (
-                $normalizedType === 'analog'
-                || ($isJsonCommand && is_numeric($actionValue))
-            )
-        ) {
-            if (! is_numeric($actionValue)) {
-                throw new \RuntimeException('Analog action value must be numeric.');
-            }
+        if ($actionValue !== null && is_numeric($actionValue)) {
             $value = (float) $actionValue;
             try {
                 $this->recordEvent('action_on', [
@@ -471,7 +449,8 @@ class WorkflowRunService
                     $controlUrlId,
                     $this->workflowRunHttpHelper->withControlResponseWait(
                         $this->withWorkflowCommandContext(array_merge(
-                            $isJsonCommand ? $jsonCommandPayload : ['action_type' => $actionType],
+                            ['action_type' => $actionType],
+                            $jsonCommandPayload,
                             ['value' => $value]
                         ))
                     )
@@ -490,11 +469,7 @@ class WorkflowRunService
         if ($actionValue !== null) {
             $state = strtolower((string) $actionValue);
             $isDigitalState = $state === 'on' || $state === 'off';
-
-            if ($normalizedType === 'digital' && ! $isDigitalState) {
-                throw new \RuntimeException('Digital action value must be "on" or "off".');
-            }
-            if (($normalizedType === 'digital' || $isJsonCommand) && $isDigitalState) {
+            if ($isDigitalState) {
             try {
                 $this->recordEvent($state === 'on' ? 'action_on' : 'action_off', [
                     'control_url_id' => $controlUrlId,
@@ -504,7 +479,8 @@ class WorkflowRunService
                     $controlUrlId,
                     $this->workflowRunHttpHelper->withControlResponseWait(
                         $this->withWorkflowCommandContext(array_merge(
-                            $isJsonCommand ? $jsonCommandPayload : ['action_type' => $actionType],
+                            ['action_type' => $actionType],
+                            $jsonCommandPayload,
                             ['state' => $state]
                         ))
                     )
@@ -520,7 +496,7 @@ class WorkflowRunService
 
             if ($state === 'on' && $duration > 0) {
                 $this->waitActionDuration($duration, $controlUrlId, $node);
-                $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node, $jsonCommandPayload);
+                $this->sendActionOff($controlUrlId, $actionType, $node, $jsonCommandPayload);
             }
             return;
             }
@@ -535,8 +511,9 @@ class WorkflowRunService
                 $controlUrlId,
                 $this->workflowRunHttpHelper->withControlResponseWait(
                     $this->withWorkflowCommandContext(array_merge(
-                        $isJsonCommand ? $jsonCommandPayload : ['action_type' => $actionType],
-                        $isJsonCommand ? [] : ['state' => 'on']
+                        ['action_type' => $actionType],
+                        $jsonCommandPayload,
+                        ['state' => 'on']
                     ))
                 )
             );
@@ -551,11 +528,11 @@ class WorkflowRunService
 
         if ($duration > 0) {
             $this->waitActionDuration($duration, $controlUrlId, $node);
-            $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node, $jsonCommandPayload);
+            $this->sendActionOff($controlUrlId, $actionType, $node, $jsonCommandPayload);
             return;
         }
 
-        $this->sendActionOff($controlUrlId, $actionType, $normalizedType, $node, $jsonCommandPayload);
+        $this->sendActionOff($controlUrlId, $actionType, $node, $jsonCommandPayload);
     }
 
     /**
@@ -592,24 +569,15 @@ class WorkflowRunService
     private function sendActionOff(
         string $controlUrlId,
         string $actionType,
-        ?string $normalizedType,
         array $node,
         array $jsonCommandPayload = []
     ): void {
         try {
-            $payload = $normalizedType === 'json_command' ? $jsonCommandPayload : [];
-            if ($normalizedType !== 'json_command') {
-                // Ensure action_type is present for non-json command routing.
-                $payload['action_type'] = $actionType;
-            }
-            if ($normalizedType === 'analog') {
-                $payload['value'] = 0;
-            } elseif ($normalizedType === 'json_command') {
-                $payload['state'] = 'off';
-                $payload['value'] = 0;
-            } else {
-                $payload['state'] = 'off';
-            }
+            $payload = array_merge(
+                ['action_type' => $actionType],
+                $jsonCommandPayload,
+                ['state' => 'off']
+            );
             $this->recordEvent('action_off', [
                 'control_url_id' => $controlUrlId,
                 'node_id' => $node['id'] ?? null,
