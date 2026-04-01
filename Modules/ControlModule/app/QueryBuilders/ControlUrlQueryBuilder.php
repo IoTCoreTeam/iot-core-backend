@@ -10,6 +10,9 @@ class ControlUrlQueryBuilder
 {
     private static function applyControlCounts(Builder $query): Builder
     {
+        $includeTrashed = method_exists($query, 'removedScopes')
+            && array_key_exists('Illuminate\\Database\\Eloquent\\SoftDeletingScope', $query->removedScopes());
+
         return $query
             ->select('control_urls.*')
             ->selectRaw("
@@ -21,27 +24,43 @@ class ControlUrlQueryBuilder
                 END AS analog_count
             ")
             ->withCount([
-                'jsonCommands as command_count',
+                'jsonCommands as command_count' => function ($jsonCommandsQuery) use ($includeTrashed) {
+                    if ($includeTrashed) {
+                        $jsonCommandsQuery->withTrashed();
+                    }
+                },
             ]);
     }
 
     public static function fromRequest(Request $request)
     {
         $perPage = $request->integer('per_page', 10);
-        $query = self::applyControlCounts(self::buildQuery($request));
+        $includes = self::parseIncludes($request);
+        $query = self::applyControlCounts(self::buildQuery($request, $includes));
+        $results = $query->orderByDesc('created_at')->paginate($perPage);
 
-        return $query->orderByDesc('created_at')->paginate($perPage);
+        if ($includes->contains('analog_signal') || $includes->contains('analogsignal')) {
+            $results->through(function (ControlUrl $controlUrl) {
+                return $controlUrl->append('analog_signal');
+            });
+        }
+
+        return $results;
     }
 
-    public static function buildQuery(Request $request): Builder
+    public static function buildQuery(Request $request, $includes = null): Builder
     {
         $query = ControlUrl::query();
 
-        $includes = collect(explode(',', (string) $request->query('include', '')))
-            ->map(fn ($include) => trim((string) $include))
-            ->filter()
-            ->unique()
-            ->values();
+        $includes = $includes ?? self::parseIncludes($request);
+        $includeAll = $includes->contains('all');
+        $onlyTrashed = $includes->contains('trashed');
+
+        if ($onlyTrashed) {
+            $query->onlyTrashed();
+        } elseif ($includeAll) {
+            $query->withTrashed();
+        }
 
         $relations = [];
 
@@ -56,7 +75,9 @@ class ControlUrlQueryBuilder
         }
 
         if ($includes->contains('json_commands') || $includes->contains('jsonCommands')) {
-            $relations[] = 'jsonCommands';
+            $relations['jsonCommands'] = fn ($jsonCommandsQuery) => $includeAll || $onlyTrashed
+                ? $jsonCommandsQuery->withTrashed()
+                : $jsonCommandsQuery;
         }
 
         if ($relations) {
@@ -84,5 +105,14 @@ class ControlUrlQueryBuilder
         }
 
         return $query;
+    }
+
+    private static function parseIncludes(Request $request)
+    {
+        return collect(explode(',', (string) $request->query('include', '')))
+            ->map(fn ($include) => strtolower(trim((string) $include)))
+            ->filter()
+            ->unique()
+            ->values();
     }
 }

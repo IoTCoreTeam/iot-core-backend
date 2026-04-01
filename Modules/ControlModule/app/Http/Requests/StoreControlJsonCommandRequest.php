@@ -24,7 +24,22 @@ class StoreControlJsonCommandRequest extends FormRequest
         return [
             'control_url_id' => 'required|uuid|exists:control_urls,id',
             'name' => 'required|string|max:255',
-            'command' => 'required|array',
+            'command' => [
+                'required',
+                'array',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_array($value) || array_is_list($value)) {
+                        $fail('The '.$attribute.' must be a JSON object.');
+                    }
+                },
+            ],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'name' => $this->filled('name') ? trim((string) $this->input('name')) : $this->input('name'),
+        ]);
     }
 }

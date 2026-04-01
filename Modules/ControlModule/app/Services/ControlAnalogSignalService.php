@@ -40,7 +40,7 @@ class ControlAnalogSignalService
                 'control_url_id' => $controlUrl->id,
             ]);
 
-            return $controlUrl->analog_signal ?? [
+            return $controlUrl->toAnalogSignalPayload() ?? [
                 'id' => (string) $controlUrl->id,
                 'control_url_id' => (string) $controlUrl->id,
                 'min_value' => $controlUrl->min_value,

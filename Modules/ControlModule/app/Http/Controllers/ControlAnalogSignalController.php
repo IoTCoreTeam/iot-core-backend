@@ -26,7 +26,7 @@ class ControlAnalogSignalController extends Controller
             ->orderByDesc('created_at')
             ->paginate($request->integer('per_page', 10))
             ->through(function (ControlUrl $controlUrl): array {
-                return $controlUrl->analog_signal ?? [
+                return $controlUrl->toAnalogSignalPayload() ?? [
                     'id' => (string) $controlUrl->id,
                     'control_url_id' => (string) $controlUrl->id,
                     'min_value' => $controlUrl->min_value,

@@ -34,10 +34,6 @@ class ControlUrl extends Model
         'resolution_bits' => 'integer',
     ];
 
-    protected $appends = [
-        'analog_signal',
-    ];
-
     public function node()
     {
         return $this->belongsTo(Node::class);
@@ -77,6 +73,14 @@ class ControlUrl extends Model
      * @return array<string, mixed>|null
      */
     public function getAnalogSignalAttribute(): ?array
+    {
+        return $this->toAnalogSignalPayload();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function toAnalogSignalPayload(): ?array
     {
         if ($this->min_value === null && $this->max_value === null && $this->unit === null && $this->signal_type === null && $this->resolution_bits === null) {
             return null;

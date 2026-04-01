@@ -183,12 +183,22 @@ class CommandPayloadFactory
 
         $jsonCommandId = trim((string) ($commandPayload['json_command_id'] ?? ''));
         if ($jsonCommandId !== '') {
-            return (clone $query)->where('id', $jsonCommandId)->first();
+            $selected = (clone $query)->where('id', $jsonCommandId)->first();
+            if (! $selected) {
+                throw new \RuntimeException('Selected JSON command does not belong to this control url or has been deleted.');
+            }
+
+            return $selected;
         }
 
         $jsonCommandName = trim((string) ($commandPayload['json_command_name'] ?? ''));
         if ($jsonCommandName !== '') {
-            return (clone $query)->where('name', $jsonCommandName)->first();
+            $selected = (clone $query)->where('name', $jsonCommandName)->first();
+            if (! $selected) {
+                throw new \RuntimeException('Selected JSON command name does not belong to this control url or has been deleted.');
+            }
+
+            return $selected;
         }
 
         return $query->orderBy('created_at')->first();

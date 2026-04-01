@@ -5,6 +5,7 @@ namespace Modules\ControlModule\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\ControlModule\Helpers\ApiResponse;
+use Modules\ControlModule\Http\Requests\ExecuteControlUrlRequest;
 use Modules\ControlModule\Http\Requests\StoreControlUrlRequest;
 use Modules\ControlModule\Http\Requests\UpdateControlUrlRequest;
 use Modules\ControlModule\QueryBuilders\ControlUrlQueryBuilder;
@@ -22,6 +23,7 @@ class ControlUrlController extends Controller
     public function store(StoreControlUrlRequest $request)
     {
         $result = $this->controlUrlService->create($request->validated());
+        $result['control_url']->append('analog_signal');
 
         return ApiResponse::success($result['control_url'], $result['message'], $result['status']);
     }
@@ -29,6 +31,7 @@ class ControlUrlController extends Controller
     public function update(UpdateControlUrlRequest $request, string $id)
     {
         $result = $this->controlUrlService->update($id, $request->validated());
+        $result['control_url']->append('analog_signal');
 
         return ApiResponse::success($result['control_url'], $result['message']);
     }
@@ -40,10 +43,11 @@ class ControlUrlController extends Controller
         return ApiResponse::success(null, 'Control url deleted successfully');
     }
 
-    public function executeControlUrl(Request $request, string $id)
+    public function executeControlUrl(ExecuteControlUrlRequest $request, string $id)
     {
-        $payload = $request->all();
+        $payload = $request->validated();
         $result = $this->controlUrlService->execute($id, $payload);
+        $result['control_url']->append('analog_signal');
 
         return ApiResponse::success($result['control_url'], $result['message'], $result['status']);
     }

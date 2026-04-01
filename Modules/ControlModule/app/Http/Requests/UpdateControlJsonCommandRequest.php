@@ -24,7 +24,22 @@ class UpdateControlJsonCommandRequest extends FormRequest
         return [
             'control_url_id' => 'sometimes|uuid|exists:control_urls,id',
             'name' => 'sometimes|required|string|max:255',
-            'command' => 'sometimes|array',
+            'command' => [
+                'sometimes',
+                'array',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_array($value) || array_is_list($value)) {
+                        $fail('The '.$attribute.' must be a JSON object.');
+                    }
+                },
+            ],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'name' => $this->filled('name') ? trim((string) $this->input('name')) : $this->input('name'),
+        ]);
     }
 }

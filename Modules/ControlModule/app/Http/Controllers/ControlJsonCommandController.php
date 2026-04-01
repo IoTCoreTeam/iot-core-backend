@@ -17,15 +17,24 @@ class ControlJsonCommandController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 10);
+        $includes = collect(explode(',', (string) $request->query('include', '')))
+            ->map(fn ($include) => strtolower(trim((string) $include)))
+            ->filter()
+            ->unique()
+            ->values();
+        $includeAll = $includes->contains('all');
+        $onlyTrashed = $includes->contains('trashed');
 
         return ControlJsonCommand::query()
+            ->when($onlyTrashed, fn ($query) => $query->onlyTrashed())
+            ->when($includeAll && ! $onlyTrashed, fn ($query) => $query->withTrashed())
             ->when($request->filled('control_url_id'), function ($query) use ($request) {
                 $query->where('control_url_id', (string) $request->query('control_url_id'));
             })
             ->with([
-                'controlUrl',
-                'controlUrl.node:id,external_id',
-                'controlUrl.node.gateway:id,external_id',
+                'controlUrl' => fn ($query) => $query->withTrashed(),
+                'controlUrl.node' => fn ($query) => $query->withTrashed()->select(['id', 'gateway_id', 'external_id']),
+                'controlUrl.node.gateway' => fn ($query) => $query->withTrashed()->select(['id', 'external_id']),
             ])
             ->orderByDesc('created_at')
             ->paginate($perPage);

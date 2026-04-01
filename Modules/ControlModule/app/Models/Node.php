@@ -81,5 +81,32 @@ class Node extends Model
                     'updated_at' => $timestamp,
                 ]);
         });
+
+        static::restored(function (Node $node): void {
+            $timestamp = $node->freshTimestampString();
+            $controlUrlIds = ControlUrl::withTrashed()
+                ->where('node_id', $node->id)
+                ->pluck('id');
+
+            if ($controlUrlIds->isEmpty()) {
+                return;
+            }
+
+            ControlUrl::withTrashed()
+                ->whereIn('id', $controlUrlIds)
+                ->whereNotNull('deleted_at')
+                ->update([
+                    'deleted_at' => null,
+                    'updated_at' => $timestamp,
+                ]);
+
+            ControlJsonCommand::withTrashed()
+                ->whereIn('control_url_id', $controlUrlIds)
+                ->whereNotNull('deleted_at')
+                ->update([
+                    'deleted_at' => null,
+                    'updated_at' => $timestamp,
+                ]);
+        });
     }
 }
