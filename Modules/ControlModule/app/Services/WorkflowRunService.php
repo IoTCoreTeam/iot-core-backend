@@ -55,11 +55,16 @@ class WorkflowRunService
     {
         $this->events = [];
         $this->currentWorkflowId = (string) $workflow->id;
-        $this->recordEvent('workflow_start', ['workflow_id' => $workflow->id]);
 
         $nodes = [];
 
         try {
+            if ($workflow->status !== 'approved') {
+                throw new \RuntimeException('Only approved workflows can be run.');
+            }
+
+            $this->recordEvent('workflow_start', ['workflow_id' => $workflow->id]);
+
             $definition = $workflow->control_definition;
             if (! is_array($definition) || empty($definition['nodes'])) {
                 throw new \RuntimeException('Workflow definition is empty.');

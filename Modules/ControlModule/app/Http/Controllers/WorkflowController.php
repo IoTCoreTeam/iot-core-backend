@@ -92,6 +92,10 @@ class WorkflowController extends Controller
      */
     public function run(Request $request, Workflow $workflow)
     {
+        if ($workflow->status !== 'approved') {
+            return ApiResponse::error('Only approved workflows can be run.', 422);
+        }
+
         $actor = $request->user();
         $turnOffDevicesBeforeRun = $request->boolean('turn_off_devices_before_run', true);
         try {
