@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Http\Requests\UpdateuserRequest;
 use App\Helpers\ApiResponse;
 use App\Helpers\SystemLogHelper;
@@ -59,7 +58,7 @@ class UserController extends Controller
         $perPage = $request->integer('per_page', 20);
         $filters = $request->input('filters', []);
 
-        $users = User::filterUsers($filters, $perPage);
+        $users = UserQueryBuilder::filterUsers($filters, $perPage);
 
         return response()->json($users);
     }

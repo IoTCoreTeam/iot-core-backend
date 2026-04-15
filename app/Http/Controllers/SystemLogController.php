@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SystemLog;
 use Illuminate\Http\Request;
 use App\QueryBuilders\SystemLogQueryBuilder;
 
@@ -15,7 +14,7 @@ class SystemLogController extends Controller
 
     public function countByWeekAndLevel(Request $request)
     {
-        return response()->json(SystemLog::countByWeekAndLevel());
+        return response()->json(SystemLogQueryBuilder::countByWeekAndLevel());
     }
 
     public function countTopActions(Request $request)
@@ -23,6 +22,16 @@ class SystemLogController extends Controller
         $days = max(1, $request->integer('days', 7));
         $limit = max(1, $request->integer('limit', 6));
 
-        return response()->json(SystemLog::countTopActions($days, $limit));
+        return response()->json(SystemLogQueryBuilder::countTopActions($days, $limit));
+    }
+
+    public function countControlUrlOutcomes(Request $request)
+    {
+        $hours = max(1, $request->integer('hours', 12));
+        $bucket = (string) $request->query('bucket', 'hour');
+
+        return response()->json(
+            SystemLogQueryBuilder::countControlUrlExecutionOutcomes($hours, $bucket)
+        );
     }
 }
