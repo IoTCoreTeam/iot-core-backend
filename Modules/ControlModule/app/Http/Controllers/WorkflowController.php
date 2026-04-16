@@ -130,7 +130,17 @@ class WorkflowController extends Controller
 
     public function stop(Workflow $workflow)
     {
-        $result = $this->workflowRunService->stop($workflow);
+        $activeRunId = $this->workflowRunStateStore->getActiveRunId((string) $workflow->id);
+        $this->workflowRunService->setRunId($activeRunId);
+
+        try {
+            $result = $this->workflowRunService->stop($workflow);
+            if ($activeRunId) {
+                $this->workflowRunStateStore->markStopped($activeRunId, 'Stopped by user request.');
+            }
+        } finally {
+            $this->workflowRunService->setRunId(null);
+        }
 
         return ApiResponse::success($result, 'Workflow devices stopped successfully');
     }

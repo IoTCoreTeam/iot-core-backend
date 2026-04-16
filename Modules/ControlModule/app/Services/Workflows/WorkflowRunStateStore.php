@@ -52,6 +52,9 @@ class WorkflowRunStateStore
         if (! $state) {
             return;
         }
+        if ($this->isTerminalStatus((string) ($state['status'] ?? ''))) {
+            return;
+        }
         $state['status'] = 'running';
         $state['updated_at'] = now()->toISOString();
         $this->persist($runId, $state);
@@ -64,6 +67,9 @@ class WorkflowRunStateStore
     {
         $state = $this->state($runId);
         if (! $state) {
+            return;
+        }
+        if ($this->isTerminalStatus((string) ($state['status'] ?? ''))) {
             return;
         }
 
@@ -81,6 +87,9 @@ class WorkflowRunStateStore
     {
         $state = $this->state($runId);
         if (! $state) {
+            return;
+        }
+        if ($this->isTerminalStatus((string) ($state['status'] ?? ''))) {
             return;
         }
 
@@ -118,6 +127,9 @@ class WorkflowRunStateStore
         if (! $state) {
             return;
         }
+        if ($this->isTerminalStatus((string) ($state['status'] ?? ''))) {
+            return;
+        }
 
         if (($state['status'] ?? null) === 'queued') {
             $state['status'] = 'running';
@@ -144,6 +156,9 @@ class WorkflowRunStateStore
     {
         $state = $this->state($runId);
         if (! $state) {
+            return;
+        }
+        if ($this->isTerminalStatus((string) ($state['status'] ?? ''))) {
             return;
         }
         $state['main_finished'] = true;
@@ -176,6 +191,9 @@ class WorkflowRunStateStore
         if (! $state) {
             return;
         }
+        if (($state['status'] ?? null) === 'stopped') {
+            return;
+        }
         $state['status'] = 'failed';
         $state['error'] = $message;
         $events = $this->normalizeEvents($state['events'] ?? []);
@@ -187,6 +205,44 @@ class WorkflowRunStateStore
         $state['updated_at'] = now()->toISOString();
         $this->persist($runId, $state);
         $this->releaseActiveLock($state, $runId);
+    }
+
+    public function markStopped(string $runId, ?string $reason = null): void
+    {
+        $state = $this->state($runId);
+        if (! $state) {
+            return;
+        }
+
+        if (($state['status'] ?? null) === 'stopped') {
+            return;
+        }
+
+        $state['status'] = 'stopped';
+        if ($reason !== null && $reason !== '') {
+            $state['error'] = $reason;
+        }
+        $state['main_finished'] = true;
+
+        $events = $this->normalizeEvents($state['events'] ?? []);
+        $events[] = $this->buildEvent('workflow_stopped', [
+            'workflow_id' => $state['workflow_id'] ?? null,
+            'run_id' => $runId,
+            'reason' => $reason,
+        ]);
+        $state['events'] = $this->trimEvents($events);
+        $state['updated_at'] = now()->toISOString();
+        $this->persist($runId, $state);
+        $this->releaseActiveLock($state, $runId);
+    }
+
+    public function getActiveRunId(string $workflowId): ?string
+    {
+        $value = Cache::get($this->activeKey($workflowId));
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return (string) $value;
     }
 
     /**
@@ -284,6 +340,11 @@ class WorkflowRunStateStore
             return array_slice($events, -self::MAX_EVENTS);
         }
         return $events;
+    }
+
+    private function isTerminalStatus(string $status): bool
+    {
+        return in_array($status, ['completed', 'failed', 'stopped'], true);
     }
 
     /**
