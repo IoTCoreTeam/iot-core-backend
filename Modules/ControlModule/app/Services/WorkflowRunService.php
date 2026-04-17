@@ -51,7 +51,7 @@ class WorkflowRunService
     /**
      * @return array<string, mixed>
      */
-    public function run(Workflow $workflow, ?User $actor = null, bool $turnOffDevicesBeforeRun = true): array
+    public function run(Workflow $workflow, ?User $actor = null): array
     {
         $this->events = [];
         $this->currentWorkflowId = (string) $workflow->id;
@@ -80,16 +80,6 @@ class WorkflowRunService
             ]);
 
             $this->assertWorkflowDevicesReady($nodes, $deviceStatus);
-            $devicesChecked = count($this->collectRequiredTargets($nodes)) > 0;
-
-            if ($turnOffDevicesBeforeRun && $devicesChecked) {
-                $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
-                $this->recordEvent('workflow_devices_ensured_off');
-            } else {
-                $this->recordEvent('workflow_devices_ensure_off_skipped', [
-                    'reason' => $turnOffDevicesBeforeRun ? 'devices_not_checked' : 'disabled_by_user',
-                ]);
-            }
 
             $result = $this->executeFlow($nodes, $edges);
             $this->recordEvent('workflow_completed', [
@@ -174,10 +164,7 @@ class WorkflowRunService
             ];
         }
 
-        $nodes = $definition['nodes'] ?? [];
-
         try {
-            $this->ensureWorkflowDevicesOff($nodes, (string) $workflow->id);
             $this->recordEvent('workflow_stop_completed', [
                 'workflow_id' => $workflow->id,
             ]);
@@ -305,49 +292,6 @@ class WorkflowRunService
         }
 
         return $required;
-    }
-
-    /**
-     * @param array<int, mixed> $nodes
-     */
-    private function ensureWorkflowDevicesOff(array $nodes, ?string $workflowId = null): void
-    {
-        $controlUrlIds = $this->workflowRunDataHelper->collectActionControlUrls($nodes);
-        if (empty($controlUrlIds)) {
-            $this->recordEvent('workflow_devices_off_skipped', [
-                'reason' => 'no_action_nodes',
-            ]);
-            return;
-        }
-
-        $this->recordEvent('workflow_devices_off_started', [
-            'count' => count($controlUrlIds),
-        ]);
-
-        foreach ($controlUrlIds as $controlUrlId) {
-            try {
-                $this->recordEvent('workflow_device_off', [
-                    'control_url_id' => $controlUrlId,
-                ]);
-                $actionType = $this->resolveControlUrlInputType($controlUrlId) ?? 'relay_control';
-                $payload = [
-                    'action_type' => $actionType,
-                    'state' => 'off',
-                ];
-                $this->controlUrlService->execute(
-                    $controlUrlId,
-                    $this->workflowRunHttpHelper->withControlResponseWait(
-                        $this->withWorkflowCommandContext($payload, $workflowId)
-                    )
-                );
-            } catch (\Throwable $e) {
-                $this->recordEvent('workflow_device_off_failed', [
-                    'control_url_id' => $controlUrlId,
-                    'error' => $e->getMessage(),
-                ], 'error');
-                throw new \RuntimeException('Failed to turn off workflow devices.');
-            }
-        }
     }
 
     /**
@@ -652,22 +596,6 @@ class WorkflowRunService
         ]);
 
         return $result;
-    }
-
-    /**
-     * @param array<int, mixed> $nodes
-     */
-    private function abortWorkflowDevices(array $nodes, ?string $workflowId = null): void
-    {
-        try {
-            $this->ensureWorkflowDevicesOff($nodes, $workflowId);
-            $this->recordEvent('workflow_devices_forced_off');
-        } catch (\Throwable $e) {
-            $this->recordEvent('workflow_devices_force_off_failed', [
-                'error' => $e->getMessage(),
-            ], 'error');
-            // ignore abort errors
-        }
     }
 
     /**

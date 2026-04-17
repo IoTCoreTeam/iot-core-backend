@@ -20,8 +20,7 @@ class RunWorkflowJob implements ShouldQueue
     public function __construct(
         public readonly string $workflowId,
         public readonly ?int $actorId = null,
-        public readonly ?string $runId = null,
-        public readonly bool $turnOffDevicesBeforeRun = true
+        public readonly ?string $runId = null
     ) {}
 
     public function handle(
@@ -51,7 +50,7 @@ class RunWorkflowJob implements ShouldQueue
 
         $actor = $this->actorId ? User::find($this->actorId) : null;
         try {
-            $result = $workflowRunService->run($workflow, $actor, $this->turnOffDevicesBeforeRun);
+            $result = $workflowRunService->run($workflow, $actor);
             if ($this->runId) {
                 $workflowRunStateStore->markMainFinished($this->runId, $result);
             }

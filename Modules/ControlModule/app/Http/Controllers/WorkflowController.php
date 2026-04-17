@@ -97,7 +97,6 @@ class WorkflowController extends Controller
         }
 
         $actor = $request->user();
-        $turnOffDevicesBeforeRun = $request->boolean('turn_off_devices_before_run', true);
         try {
             $run = $this->workflowRunStateStore->createRun((string) $workflow->id, $actor?->id);
         } catch (\RuntimeException $e) {
@@ -108,8 +107,7 @@ class WorkflowController extends Controller
         RunWorkflowJob::dispatch(
             (string) $workflow->id,
             $actor?->id,
-            $runId !== '' ? $runId : null,
-            $turnOffDevicesBeforeRun
+            $runId !== '' ? $runId : null
         );
 
         if ($actor) {
@@ -142,7 +140,7 @@ class WorkflowController extends Controller
             $this->workflowRunService->setRunId(null);
         }
 
-        return ApiResponse::success($result, 'Workflow devices stopped successfully');
+        return ApiResponse::success($result, 'Workflow stopped successfully');
     }
 
     /**
