@@ -64,11 +64,14 @@ class ControlUrlQueryBuilder
 
         $relations = [];
 
-        if ($includes->contains('gateway')) {
-            $relations['node'] = function ($nodeQuery) {
+        if ($includes->contains('gateway') || $includes->contains('managed_areas') || $includes->contains('managedareas')) {
+            $relations['node'] = function ($nodeQuery) use ($includes) {
                 $nodeQuery->withTrashed()->with([
                     'gateway' => fn ($gatewayQuery) => $gatewayQuery->withTrashed(),
                 ]);
+                if ($includes->contains('managed_areas') || $includes->contains('managedareas')) {
+                    $nodeQuery->with('managedAreas');
+                }
             };
         } elseif ($includes->contains('node')) {
             $relations['node'] = fn ($nodeQuery) => $nodeQuery->withTrashed();
