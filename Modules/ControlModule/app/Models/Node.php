@@ -22,6 +22,11 @@ class Node extends Model
         'mac_address',
         'ip_address',
         'type',
+        'latest_lat',
+        'latest_lng',
+        'latest_heading_deg',
+        'latest_heading_cardinal',
+        'latest_gps_recorded_at',
     ];
 
     public function gateway()

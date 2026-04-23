@@ -33,6 +33,7 @@ Route::middleware(['auth:api', 'admin_or_engineer'])->prefix('v1')->group(functi
         Route::get('/', [NodeController::class, 'index'])->name('nodes.index');
         Route::post('/register', [NodeController::class, 'registation'])->name('nodes.register');
         Route::post('{external_id}/deactivate', [NodeController::class, 'deactivation'])->name('nodes.deactivate');
+        Route::post('{external_id}/location', [NodeController::class, 'updateLatestLocation'])->name('nodes.location');
     });
 
     Route::prefix('control-urls')->group(function (): void {

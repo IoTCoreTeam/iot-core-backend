@@ -2,6 +2,7 @@
 
 namespace Modules\ControlModule\Services;
 
+use Illuminate\Support\Facades\Log;
 use Modules\ControlModule\Helpers\SystemLogHelper;
 use Modules\ControlModule\Models\Node;
 
@@ -82,6 +83,68 @@ class NodeService
         return [
             'node' => $node,
             'message' => 'Node deactivated successfully',
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $data
+     * @return array{node: Node, message: string}
+     */
+    public function updateLatestLocation(Node $node, array $data): array
+    {
+        $lat = $data['latest_lat'] ?? null;
+        $lng = $data['latest_lng'] ?? null;
+
+        if ($lat === null || $lng === null) {
+            return [
+                'node' => $node,
+                'message' => 'GPS values are null, skipped',
+            ];
+        }
+
+        $latNum = is_numeric($lat) ? (float) $lat : null;
+        $lngNum = is_numeric($lng) ? (float) $lng : null;
+
+        if ($latNum === null || $lngNum === null) {
+            Log::warning("[NodeService] Invalid GPS type for node {$node->external_id}: lat={$lat}, lng={$lng}");
+
+            return [
+                'node' => $node,
+                'message' => 'Invalid GPS type, skipped',
+            ];
+        }
+
+        if ($latNum < -90 || $latNum > 90 || $lngNum < -180 || $lngNum > 180) {
+            Log::warning("[NodeService] Invalid GPS range for node {$node->external_id}: lat={$latNum}, lng={$lngNum}");
+
+            return [
+                'node' => $node,
+                'message' => 'GPS validation failed, skipped',
+            ];
+        }
+
+        $updateData = [
+            'latest_lat' => $latNum,
+            'latest_lng' => $lngNum,
+            'latest_gps_recorded_at' => now(),
+        ];
+
+        $headingDeg = $data['latest_heading_deg'] ?? null;
+        $headingCardinal = $data['latest_heading_cardinal'] ?? null;
+
+        if ($headingDeg !== null && is_numeric($headingDeg)) {
+            $updateData['latest_heading_deg'] = (float) $headingDeg;
+        }
+
+        if ($headingCardinal !== null && is_string($headingCardinal)) {
+            $updateData['latest_heading_cardinal'] = $headingCardinal;
+        }
+
+        $node->update($updateData);
+
+        return [
+            'node' => $node->fresh(),
+            'message' => 'Latest location updated',
         ];
     }
 }

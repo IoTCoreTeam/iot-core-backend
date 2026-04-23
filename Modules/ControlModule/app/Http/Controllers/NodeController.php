@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Modules\ControlModule\QueryBuilders\NodeQueryBuilder;
 use Modules\ControlModule\Services\NodeManagementService;
+use Modules\ControlModule\Models\Node;
 use Modules\ControlModule\Services\NodeService;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +53,24 @@ class NodeController extends Controller
     public function getActiveDevices(): JsonResponse // hàm này để client, server gọi lấy danh sách node đã đăng ký
     {
         return ApiResponse::success(NodeQueryBuilder::getActiveDevicesPayload(), 'Registered node resources fetched successfully');
+    }
+
+    public function updateLatestLocation(Request $request, string $externalId): JsonResponse
+    {
+        $node = Node::where('external_id', $externalId)->first();
+
+        if (! $node) {
+            return ApiResponse::error('Node not found', 404);
+        }
+
+        $result = $this->nodeService->updateLatestLocation($node, $request->only([
+            'latest_lat',
+            'latest_lng',
+            'latest_heading_deg',
+            'latest_heading_cardinal',
+        ]));
+
+        return ApiResponse::success($result['node'], $result['message']);
     }
 
     public static function sendAvailableNode(): JsonResponse // hàm này để chủ động gửi danh sách node đang active cho server điều khiển+++
