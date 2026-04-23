@@ -37,7 +37,11 @@ class NodeQueryBuilder
             }
         }
 
-        $query->with('managedAreas:id,name');
+        $relations = ['managedAreas:id,name'];
+        if ($includes->contains('gateway')) {
+            $relations[] = 'gateway:id,external_id';
+        }
+        $query->with($relations);
 
         return $query;
     }
