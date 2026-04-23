@@ -2,6 +2,7 @@
 
 namespace Modules\ControlModule\Models;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -28,6 +29,11 @@ class Node extends Model
         'latest_heading_cardinal',
         'latest_gps_recorded_at',
     ];
+
+    protected function serializeDate(DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d\TH:i:sP');
+    }
 
     public function gateway()
     {
